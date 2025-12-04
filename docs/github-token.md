@@ -33,7 +33,27 @@ The `repo` scope provides broader access than fine-grained tokens but is simpler
 
 ## Setting Up the Token
 
-### Option 1: Environment Variable
+### Option 1: Secrets File (Recommended)
+
+Use murmur's built-in secrets management:
+
+```bash
+# Create the secrets file with secure permissions
+murmur secrets-init
+
+# Edit the file and add your token
+# File location: ~/.config/murmur/secrets.toml
+```
+
+The secrets file format:
+```toml
+[github]
+token = "github_pat_xxxxxxxxxxxx"
+```
+
+The file must have `600` permissions (owner read/write only). Murmur will refuse to read it if it's world-readable.
+
+### Option 2: Environment Variable
 
 ```bash
 export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
@@ -41,13 +61,12 @@ export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 
 Add to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) for persistence.
 
-### Option 2: File-based (for scripts)
+The environment variable takes priority over the secrets file.
 
-```bash
-echo "ghp_xxxxxxxxxxxxxxxxxxxx" > ~/.murmur-gh-token
-chmod 600 ~/.murmur-gh-token
-export GITHUB_TOKEN=$(cat ~/.murmur-gh-token)
-```
+### Token Loading Priority
+
+1. `GITHUB_TOKEN` environment variable
+2. `~/.config/murmur/secrets.toml`
 
 ## Token Types
 

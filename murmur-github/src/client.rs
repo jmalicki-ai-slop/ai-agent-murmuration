@@ -1,6 +1,7 @@
 //! GitHub API client using octocrab
 
 use crate::{Error, Result};
+use murmur_core::Secrets;
 use octocrab::Octocrab;
 use tracing::{debug, info};
 
@@ -14,13 +15,22 @@ pub struct GitHubClient {
 impl GitHubClient {
     /// Create a new GitHub client for the specified repository
     ///
-    /// Requires GITHUB_TOKEN environment variable to be set.
+    /// Token is loaded from (in priority order):
+    /// 1. GITHUB_TOKEN environment variable
+    /// 2. ~/.config/murmur/secrets.toml
     pub fn new(owner: impl Into<String>, repo: impl Into<String>) -> Result<Self> {
         let owner = owner.into();
         let repo = repo.into();
 
-        let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
-            Error::Auth("GITHUB_TOKEN environment variable not set".to_string())
+        // Load secrets (handles env var and secrets file)
+        let secrets = Secrets::load().map_err(|e| Error::Auth(e.to_string()))?;
+
+        let token = secrets.github_token().ok_or_else(|| {
+            Error::Auth(
+                "GitHub token not found. Set GITHUB_TOKEN environment variable \
+                 or add token to ~/.config/murmur/secrets.toml"
+                    .to_string(),
+            )
         })?;
 
         let client = Octocrab::builder()

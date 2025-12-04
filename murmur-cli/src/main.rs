@@ -5,7 +5,7 @@
 mod commands;
 
 use clap::{Parser, Subcommand};
-use murmur_core::{Config, GitRepo};
+use murmur_core::{Config, GitRepo, Secrets};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use commands::{IssueArgs, RunArgs, WorkArgs, WorktreeArgs};
@@ -86,6 +86,10 @@ enum Commands {
 
     /// Show current configuration
     Config,
+
+    /// Initialize secrets file
+    #[command(visible_alias = "init")]
+    SecretsInit,
 }
 
 #[tokio::main]
@@ -147,6 +151,29 @@ async fn main() -> anyhow::Result<()> {
                     println!("  (exists)");
                 } else {
                     println!("  (not found - using defaults)");
+                }
+            }
+            println!();
+            if let Some(path) = Secrets::default_secrets_path() {
+                println!("Secrets file: {}", path.display());
+                if path.exists() {
+                    println!("  (exists)");
+                } else {
+                    println!("  (not found - run 'murmur secrets-init' to create)");
+                }
+            }
+        }
+        Some(Commands::SecretsInit) => {
+            match Secrets::create_template() {
+                Ok(path) => {
+                    println!("Created secrets file: {}", path.display());
+                    println!();
+                    println!("Please edit the file and add your GitHub token.");
+                    println!("Get a token at: https://github.com/settings/tokens");
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
                 }
             }
         }
