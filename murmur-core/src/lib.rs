@@ -4,9 +4,11 @@
 //! AI agents working collaboratively on software development tasks.
 
 pub mod agent;
+pub mod config;
 pub mod error;
 
 pub use agent::{
     AgentHandle, AgentSpawner, CostInfo, OutputStreamer, PrintHandler, StreamHandler, StreamMessage,
 };
+pub use config::{AgentConfig, Config};
 pub use error::{Error, Result};

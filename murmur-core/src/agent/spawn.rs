@@ -4,6 +4,7 @@ use std::path::Path;
 use std::process::Stdio;
 use tokio::process::{Child, Command};
 
+use crate::config::AgentConfig;
 use crate::{Error, Result};
 
 /// Handle to a running Claude Code agent process
@@ -54,10 +55,18 @@ impl AgentHandle {
 }
 
 /// Spawner for Claude Code agent processes
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct AgentSpawner {
-    /// Path to the claude executable (defaults to "claude" in PATH)
-    claude_path: Option<String>,
+    /// Agent configuration
+    config: AgentConfig,
+}
+
+impl Default for AgentSpawner {
+    fn default() -> Self {
+        Self {
+            config: AgentConfig::default(),
+        }
+    }
 }
 
 impl AgentSpawner {
@@ -66,9 +75,20 @@ impl AgentSpawner {
         Self::default()
     }
 
+    /// Create an agent spawner from configuration
+    pub fn from_config(config: AgentConfig) -> Self {
+        Self { config }
+    }
+
     /// Set a custom path to the claude executable
     pub fn with_claude_path(mut self, path: impl Into<String>) -> Self {
-        self.claude_path = Some(path.into());
+        self.config.claude_path = path.into();
+        self
+    }
+
+    /// Set the model to use
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.config.model = Some(model.into());
         self
     }
 
@@ -96,27 +116,33 @@ impl AgentSpawner {
             )));
         }
 
-        let claude_cmd = self.claude_path.as_deref().unwrap_or("claude");
+        let claude_cmd = &self.config.claude_path;
 
-        let child = Command::new(claude_cmd)
-            .arg("--print")
+        let mut cmd = Command::new(claude_cmd);
+        cmd.arg("--print")
             .arg("--output-format")
-            .arg("stream-json")
-            .arg(&prompt)
+            .arg("stream-json");
+
+        // Add model flag if specified
+        if let Some(ref model) = self.config.model {
+            cmd.arg("--model").arg(model);
+        }
+
+        cmd.arg(&prompt)
             .current_dir(workdir_path)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    Error::Agent(format!(
-                        "Claude executable not found at '{}'. Is Claude Code installed?",
-                        claude_cmd
-                    ))
-                } else {
-                    Error::Io(e)
-                }
-            })?;
+            .stderr(Stdio::piped());
+
+        let child = cmd.spawn().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                Error::Agent(format!(
+                    "Claude executable not found at '{}'. Is Claude Code installed?",
+                    claude_cmd
+                ))
+            } else {
+                Error::Io(e)
+            }
+        })?;
 
         Ok(AgentHandle {
             child,

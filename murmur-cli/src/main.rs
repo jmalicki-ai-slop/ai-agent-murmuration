@@ -5,6 +5,7 @@
 mod commands;
 
 use clap::{Parser, Subcommand};
+use murmur_core::Config;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use commands::RunArgs;
@@ -18,6 +19,14 @@ struct Cli {
     #[arg(short, long, global = true)]
     verbose: bool,
 
+    /// Path to claude executable (overrides config and env)
+    #[arg(long, global = true, env = "MURMUR_CLAUDE_PATH")]
+    claude_path: Option<String>,
+
+    /// Model to use (overrides config and env)
+    #[arg(long, global = true, env = "MURMUR_MODEL")]
+    model: Option<String>,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -30,6 +39,9 @@ enum Commands {
     /// Run a task with Murmuration agents
     #[command(visible_alias = "r")]
     Run(RunArgs),
+
+    /// Show current configuration
+    Config,
 }
 
 #[tokio::main]
@@ -46,12 +58,40 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Verbose mode enabled");
     }
 
+    // Load configuration with overrides
+    let config = Config::load_with_overrides(cli.claude_path.clone(), cli.model.clone())?;
+
+    if cli.verbose {
+        tracing::info!(
+            claude_path = %config.agent.claude_path,
+            model = ?config.agent.model,
+            "Configuration loaded"
+        );
+    }
+
     match cli.command {
         Some(Commands::Version) => {
             println!("murmur {}", env!("CARGO_PKG_VERSION"));
         }
         Some(Commands::Run(args)) => {
-            args.execute(cli.verbose).await?;
+            args.execute(cli.verbose, &config).await?;
+        }
+        Some(Commands::Config) => {
+            println!("Murmur Configuration");
+            println!("====================");
+            println!();
+            println!("Agent Settings:");
+            println!("  claude_path: {}", config.agent.claude_path);
+            println!("  model: {}", config.agent.model.as_deref().unwrap_or("(default)"));
+            println!();
+            if let Some(path) = Config::default_config_path() {
+                println!("Config file: {}", path.display());
+                if path.exists() {
+                    println!("  (exists)");
+                } else {
+                    println!("  (not found - using defaults)");
+                }
+            }
         }
         None => {
             println!("Murmuration - Multi-agent orchestration for software development");
