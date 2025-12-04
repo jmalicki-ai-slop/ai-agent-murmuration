@@ -29,3 +29,4 @@ dirs = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+uuid = { version = "1.11", features = ["v4"] }

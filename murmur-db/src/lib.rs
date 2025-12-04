@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use thiserror::Error;
 
+pub mod repos;
 pub mod schema;
 
 #[derive(Debug, Error)]
