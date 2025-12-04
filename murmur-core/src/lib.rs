@@ -6,5 +6,7 @@
 pub mod agent;
 pub mod error;
 
-pub use agent::{AgentHandle, AgentSpawner};
+pub use agent::{
+    AgentHandle, AgentSpawner, CostInfo, OutputStreamer, PrintHandler, StreamHandler, StreamMessage,
+};
 pub use error::{Error, Result};
