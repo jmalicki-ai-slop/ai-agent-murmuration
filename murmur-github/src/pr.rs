@@ -217,7 +217,7 @@ impl GitHubClient {
 
     /// Check if all dependencies for an issue are satisfied
     pub async fn are_dependencies_met(&self, issue: &Issue) -> Result<(bool, Vec<u64>)> {
-        let deps = crate::IssueDependencies::parse(&issue.body);
+        let deps = crate::IssueDependencies::parse(&issue.body)?;
         let mut unmet = Vec::new();
 
         for dep_ref in &deps.depends_on {

@@ -62,7 +62,23 @@ impl WorkArgs {
 
         // Check dependencies unless --force
         if !self.force {
-            let deps = IssueDependencies::parse(&issue.body);
+            let deps = match IssueDependencies::parse(&issue.body) {
+                Ok(deps) => deps,
+                Err(murmur_github::Error::InvalidDependencyRefs(refs)) => {
+                    println!("❌ Invalid dependency references found:");
+                    for invalid in &refs {
+                        println!(
+                            "  - \"{}\" (must be #123 or owner/repo#123 format)",
+                            invalid
+                        );
+                    }
+                    println!();
+                    println!("Please fix the dependency references in the issue body.");
+                    println!("Use --force to proceed anyway.");
+                    return Ok(());
+                }
+                Err(e) => return Err(e.into()),
+            };
 
             if deps.has_dependencies() {
                 println!("Checking dependencies...");

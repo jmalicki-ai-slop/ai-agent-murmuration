@@ -18,6 +18,12 @@ pub enum StreamMessage {
         session_id: Option<String>,
     },
 
+    /// User message (tool result from user perspective)
+    User {
+        #[serde(default)]
+        message: serde_json::Value,
+    },
+
     /// Assistant text output
     Assistant {
         #[serde(default)]
@@ -103,6 +109,9 @@ pub struct CostInfo {
 pub trait StreamHandler: Send {
     /// Called when a system message is received
     fn on_system(&mut self, _subtype: Option<&str>, _session_id: Option<&str>) {}
+
+    /// Called when a user message is received (typically tool results from user perspective)
+    fn on_user(&mut self, _message: &serde_json::Value) {}
 
     /// Called when assistant text is received
     fn on_assistant_text(&mut self, text: &str);
@@ -234,6 +243,9 @@ impl OutputStreamer {
             } => {
                 handler.on_system(subtype.as_deref(), session_id.as_deref());
             }
+            StreamMessage::User { message } => {
+                handler.on_user(&message);
+            }
             StreamMessage::Assistant { message } => {
                 handler.on_assistant_text(&message.text());
             }
@@ -340,6 +352,20 @@ mod tests {
                 assert_eq!(session_id, Some("abc123".to_string()));
             }
             _ => panic!("Expected System message"),
+        }
+    }
+
+    #[test]
+    fn test_parse_user_message() {
+        // User message with tool result content
+        let json = r#"{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_123","type":"tool_result","content":"file contents here"}]}}"#;
+        let msg: StreamMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            StreamMessage::User { message } => {
+                assert!(message.is_object());
+                assert_eq!(message["role"], "user");
+            }
+            _ => panic!("Expected User message"),
         }
     }
 }

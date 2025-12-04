@@ -36,6 +36,14 @@ pub enum Error {
     #[error("Parse error: {0}")]
     Parse(String),
 
+    /// Invalid dependency reference
+    #[error("Invalid dependency reference: \"{0}\" (must be #123 or owner/repo#123 format)")]
+    InvalidDependencyRef(String),
+
+    /// Multiple invalid dependency references
+    #[error("Invalid dependency references: {}", .0.join(", "))]
+    InvalidDependencyRefs(Vec<String>),
+
     /// Other error
     #[error("{0}")]
     Other(String),

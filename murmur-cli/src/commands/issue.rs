@@ -217,40 +217,49 @@ async fn show_issue(number: u64, repo: Option<&str>, verbose: bool) -> anyhow::R
     }
 
     // Parse and show dependencies
-    let deps = IssueDependencies::parse(&issue.body);
-    if deps.has_dependencies() {
-        println!();
-        println!("Dependencies:");
+    match IssueDependencies::parse(&issue.body) {
+        Ok(deps) if deps.has_dependencies() => {
+            println!();
+            println!("Dependencies:");
 
-        for dep in &deps.depends_on {
-            let status = if dep.is_local() {
-                match client.check_dependency_status(dep.number).await {
-                    Ok(DependencyStatus::Complete) => "✅",
-                    Ok(DependencyStatus::InProgress { .. }) => "🔄",
-                    Ok(DependencyStatus::Pending) => "❌",
-                    Err(_) => "?",
-                }
-            } else {
-                "?"
-            };
+            for dep in &deps.depends_on {
+                let status = if dep.is_local() {
+                    match client.check_dependency_status(dep.number).await {
+                        Ok(DependencyStatus::Complete) => "✅",
+                        Ok(DependencyStatus::InProgress { .. }) => "🔄",
+                        Ok(DependencyStatus::Pending) => "❌",
+                        Err(_) => "?",
+                    }
+                } else {
+                    "?"
+                };
 
-            println!("  {} {} (depends on)", status, dep);
+                println!("  {} {} (depends on)", status, dep);
+            }
+
+            for dep in &deps.blocked_by {
+                let status = if dep.is_local() {
+                    match client.check_dependency_status(dep.number).await {
+                        Ok(DependencyStatus::Complete) => "✅",
+                        Ok(DependencyStatus::InProgress { .. }) => "🔄",
+                        Ok(DependencyStatus::Pending) => "❌",
+                        Err(_) => "?",
+                    }
+                } else {
+                    "?"
+                };
+
+                println!("  {} {} (blocked by)", status, dep);
+            }
         }
-
-        for dep in &deps.blocked_by {
-            let status = if dep.is_local() {
-                match client.check_dependency_status(dep.number).await {
-                    Ok(DependencyStatus::Complete) => "✅",
-                    Ok(DependencyStatus::InProgress { .. }) => "🔄",
-                    Ok(DependencyStatus::Pending) => "❌",
-                    Err(_) => "?",
-                }
-            } else {
-                "?"
-            };
-
-            println!("  {} {} (blocked by)", status, dep);
+        Err(murmur_github::Error::InvalidDependencyRefs(refs)) => {
+            println!();
+            println!("⚠️  Invalid dependency references:");
+            for r in refs {
+                println!("  - \"{}\"", r);
+            }
         }
+        _ => {}
     }
 
     // Show description
@@ -296,7 +305,19 @@ async fn show_deps(number: Option<u64>, repo: Option<&str>, verbose: bool) -> an
         return Ok(());
     }
 
-    let graph = DependencyGraph::from_issues(&issues);
+    let graph = match DependencyGraph::from_issues(&issues) {
+        Ok(g) => g,
+        Err(murmur_github::Error::InvalidDependencyRefs(refs)) => {
+            println!("❌ Invalid dependency references found in issues:");
+            for r in refs {
+                println!("  - \"{}\"", r);
+            }
+            println!();
+            println!("Please fix the dependency references in the issue bodies.");
+            return Ok(());
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     // Check for cycles
     let cycles = graph.find_cycles();

@@ -1,6 +1,6 @@
 //! Dependency parsing and graph building
 
-use crate::{Issue, IssueMetadata};
+use crate::{Error, Issue, IssueMetadata, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -62,14 +62,26 @@ pub struct IssueDependencies {
 
 impl IssueDependencies {
     /// Parse dependencies from issue body text
-    pub fn parse(body: &str) -> Self {
+    /// Returns an error if any dependency references are invalid
+    #[allow(clippy::result_large_err)]
+    pub fn parse(body: &str) -> Result<Self> {
         let mut deps = Self::default();
+        let mut invalid_refs = Vec::new();
 
         // Parse "Depends on" patterns
-        deps.depends_on.extend(parse_depends_pattern(body));
+        let (refs, invalid) = parse_depends_pattern(body);
+        deps.depends_on.extend(refs);
+        invalid_refs.extend(invalid);
 
         // Parse "Blocked by" patterns
-        deps.blocked_by.extend(parse_blocked_pattern(body));
+        let (refs, invalid) = parse_blocked_pattern(body);
+        deps.blocked_by.extend(refs);
+        invalid_refs.extend(invalid);
+
+        // Check for invalid refs and return error if any
+        if !invalid_refs.is_empty() {
+            return Err(Error::InvalidDependencyRefs(invalid_refs));
+        }
 
         // Parse "Parent:" pattern
         deps.parent = parse_parent_pattern(body);
@@ -94,7 +106,7 @@ impl IssueDependencies {
             }
         }
 
-        deps
+        Ok(deps)
     }
 
     /// Check if this issue has any dependencies
@@ -136,12 +148,14 @@ pub struct DependencyGraph {
 
 impl DependencyGraph {
     /// Build a dependency graph from a list of issues
-    pub fn from_issues(issues: &[Issue]) -> Self {
+    /// Returns an error if any issue has invalid dependency references
+    #[allow(clippy::result_large_err)]
+    pub fn from_issues(issues: &[Issue]) -> Result<Self> {
         let mut graph = Self::default();
         let issue_nums: HashSet<u64> = issues.iter().map(|i| i.number).collect();
 
         for issue in issues {
-            let deps = IssueDependencies::parse(&issue.body);
+            let deps = IssueDependencies::parse(&issue.body)?;
 
             // Record dependencies
             let local_deps: Vec<u64> = deps.all_local_deps();
@@ -179,7 +193,7 @@ impl DependencyGraph {
             }
         }
 
-        graph
+        Ok(graph)
     }
 
     /// Get issues that are ready to work on (no unmet dependencies)
@@ -304,7 +318,8 @@ impl DependencyGraph {
 }
 
 /// Parse "Depends on #X" and "Depends on owner/repo#X" patterns
-fn parse_depends_pattern(body: &str) -> Vec<IssueRef> {
+/// Returns (valid_refs, invalid_refs)
+fn parse_depends_pattern(body: &str) -> (Vec<IssueRef>, Vec<String>) {
     parse_issue_refs(
         body,
         &["Depends on", "depends on", "Depend on", "depend on"],
@@ -312,7 +327,8 @@ fn parse_depends_pattern(body: &str) -> Vec<IssueRef> {
 }
 
 /// Parse "Blocked by #X" patterns
-fn parse_blocked_pattern(body: &str) -> Vec<IssueRef> {
+/// Returns (valid_refs, invalid_refs)
+fn parse_blocked_pattern(body: &str) -> (Vec<IssueRef>, Vec<String>) {
     parse_issue_refs(body, &["Blocked by", "blocked by"])
 }
 
@@ -333,8 +349,10 @@ fn parse_parent_pattern(body: &str) -> Option<IssueRef> {
 }
 
 /// Parse issue references after a pattern
-fn parse_issue_refs(body: &str, patterns: &[&str]) -> Vec<IssueRef> {
+/// Returns (valid_refs, invalid_refs)
+fn parse_issue_refs(body: &str, patterns: &[&str]) -> (Vec<IssueRef>, Vec<String>) {
     let mut refs = Vec::new();
+    let mut invalid = Vec::new();
 
     for pattern in patterns {
         for part in body.split(pattern).skip(1) {
@@ -345,16 +363,32 @@ fn parse_issue_refs(body: &str, patterns: &[&str]) -> Vec<IssueRef> {
             // Parse comma-separated refs: "#123, #456" or "owner/repo#123"
             for segment in line.split(',') {
                 let segment = segment.trim();
+                // Skip empty segments and colons (from "Depends on:")
+                if segment.is_empty() || segment == ":" {
+                    continue;
+                }
+                // Strip leading colon if present (e.g., ": #89" -> "#89")
+                let segment = segment
+                    .strip_prefix(':')
+                    .map(|s| s.trim())
+                    .unwrap_or(segment);
+                if segment.is_empty() {
+                    continue;
+                }
+
                 if let Some(r) = parse_single_issue_ref(segment) {
                     if !refs.contains(&r) {
                         refs.push(r);
                     }
+                } else {
+                    // This is a non-empty segment that couldn't be parsed
+                    invalid.push(segment.to_string());
                 }
             }
         }
     }
 
-    refs
+    (refs, invalid)
 }
 
 /// Parse a single issue reference like "#123" or "owner/repo#123"
@@ -423,7 +457,7 @@ mod tests {
     #[test]
     fn test_parse_depends_on() {
         let body = "Depends on #15\nAlso depends on #16";
-        let deps = IssueDependencies::parse(body);
+        let deps = IssueDependencies::parse(body).unwrap();
         assert_eq!(deps.depends_on.len(), 2);
         assert_eq!(deps.depends_on[0].number, 15);
         assert_eq!(deps.depends_on[1].number, 16);
@@ -432,14 +466,14 @@ mod tests {
     #[test]
     fn test_parse_depends_on_comma_separated() {
         let body = "Depends on #15, #16, #17";
-        let deps = IssueDependencies::parse(body);
+        let deps = IssueDependencies::parse(body).unwrap();
         assert_eq!(deps.depends_on.len(), 3);
     }
 
     #[test]
     fn test_parse_blocked_by() {
         let body = "Blocked by #15";
-        let deps = IssueDependencies::parse(body);
+        let deps = IssueDependencies::parse(body).unwrap();
         assert_eq!(deps.blocked_by.len(), 1);
         assert_eq!(deps.blocked_by[0].number, 15);
     }
@@ -447,7 +481,7 @@ mod tests {
     #[test]
     fn test_parse_parent() {
         let body = "Parent: #1\nSome description";
-        let deps = IssueDependencies::parse(body);
+        let deps = IssueDependencies::parse(body).unwrap();
         assert!(deps.parent.is_some());
         assert_eq!(deps.parent.unwrap().number, 1);
     }
@@ -455,10 +489,32 @@ mod tests {
     #[test]
     fn test_parse_cross_repo_dependency() {
         let body = "Depends on other/repo#123";
-        let deps = IssueDependencies::parse(body);
+        let deps = IssueDependencies::parse(body).unwrap();
         assert_eq!(deps.depends_on.len(), 1);
         assert!(!deps.depends_on[0].is_local());
         assert_eq!(deps.depends_on[0].owner, Some("other".to_string()));
+    }
+
+    #[test]
+    fn test_parse_invalid_dependency_ref() {
+        let body = "Depends on: PR-023";
+        let result = IssueDependencies::parse(body);
+        assert!(result.is_err());
+        match result {
+            Err(Error::InvalidDependencyRefs(refs)) => {
+                assert_eq!(refs.len(), 1);
+                assert_eq!(refs[0], "PR-023");
+            }
+            _ => panic!("Expected InvalidDependencyRefs error"),
+        }
+    }
+
+    #[test]
+    fn test_parse_mixed_valid_invalid_refs() {
+        let body = "Depends on: #89, PR-023";
+        let result = IssueDependencies::parse(body);
+        assert!(result.is_err());
+        // Even though #89 is valid, the presence of PR-023 should cause an error
     }
 
     #[test]
@@ -469,7 +525,7 @@ mod tests {
             make_test_issue(3, "No deps"),
         ];
 
-        let graph = DependencyGraph::from_issues(&issues);
+        let graph = DependencyGraph::from_issues(&issues).unwrap();
 
         assert!(graph.ready.contains(&1));
         assert!(graph.ready.contains(&3));
@@ -483,7 +539,7 @@ mod tests {
             make_test_issue(2, "Depends on #1"),
         ];
 
-        let graph = DependencyGraph::from_issues(&issues);
+        let graph = DependencyGraph::from_issues(&issues).unwrap();
         let cycles = graph.find_cycles();
 
         assert!(!cycles.is_empty());
@@ -497,7 +553,7 @@ mod tests {
             make_test_issue(3, "Depends on #2"),
         ];
 
-        let graph = DependencyGraph::from_issues(&issues);
+        let graph = DependencyGraph::from_issues(&issues).unwrap();
         let order = graph.topological_order().unwrap();
 
         // 1 should come before 2, and 2 before 3
