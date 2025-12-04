@@ -57,7 +57,11 @@ impl<'a> DatabaseStreamHandler<'a> {
     }
 
     /// Store a system message
-    pub async fn store_system(&mut self, subtype: Option<&str>, session_id: Option<&str>) -> Result<()> {
+    pub async fn store_system(
+        &mut self,
+        subtype: Option<&str>,
+        session_id: Option<&str>,
+    ) -> Result<()> {
         let content = format!(
             "System message: {} (session: {})",
             subtype.unwrap_or("unknown"),
@@ -103,7 +107,11 @@ impl<'a> DatabaseStreamHandler<'a> {
             .create_with_tool_result(
                 self.agent_run_id,
                 MessageRole::System,
-                if is_error { "Tool error" } else { "Tool result" },
+                if is_error {
+                    "Tool error"
+                } else {
+                    "Tool result"
+                },
                 tool_result,
             )
             .await?;
@@ -240,7 +248,10 @@ mod tests {
             cost_usd: Some(0.001),
         };
 
-        handler.store_complete(Some(&cost), Some(1234)).await.unwrap();
+        handler
+            .store_complete(Some(&cost), Some(1234))
+            .await
+            .unwrap();
 
         let repo = ConversationRepository::new(db.pool());
         let (input, output) = repo.get_token_usage(run_id).await.unwrap();

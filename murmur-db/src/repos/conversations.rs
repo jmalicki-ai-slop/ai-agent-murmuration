@@ -325,7 +325,10 @@ mod tests {
 
     async fn setup_test_db() -> Database {
         let temp_dir = std::env::temp_dir();
-        let db_path = temp_dir.join(format!("murmur_test_conversations_{}.db", uuid::Uuid::new_v4()));
+        let db_path = temp_dir.join(format!(
+            "murmur_test_conversations_{}.db",
+            uuid::Uuid::new_v4()
+        ));
 
         let db = Database::with_path(db_path.clone()).await.unwrap();
         db.migrate().await.unwrap();
@@ -420,12 +423,26 @@ mod tests {
         let db = setup_test_db().await;
         let repo = ConversationRepository::new(db.pool());
 
-        repo.create_with_cost(1, MessageRole::Assistant, "Response", Some(100), Some(50), Some(0.001))
-            .await
-            .unwrap();
-        repo.create_with_cost(1, MessageRole::Assistant, "Another", Some(150), Some(75), Some(0.002))
-            .await
-            .unwrap();
+        repo.create_with_cost(
+            1,
+            MessageRole::Assistant,
+            "Response",
+            Some(100),
+            Some(50),
+            Some(0.001),
+        )
+        .await
+        .unwrap();
+        repo.create_with_cost(
+            1,
+            MessageRole::Assistant,
+            "Another",
+            Some(150),
+            Some(75),
+            Some(0.002),
+        )
+        .await
+        .unwrap();
 
         let (input, output) = repo.get_token_usage(1).await.unwrap();
         assert_eq!(input, 250);

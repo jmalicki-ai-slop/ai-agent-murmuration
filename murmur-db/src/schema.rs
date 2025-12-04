@@ -44,7 +44,7 @@ pub struct ConversationMessage {
     pub agent_run_id: i64,
     pub role: String,
     pub content: String,
-    pub tool_use: Option<String>, // JSON object
+    pub tool_use: Option<String>,    // JSON object
     pub tool_result: Option<String>, // JSON object
     pub timestamp: DateTime<Utc>,
     pub tokens_input: Option<i64>,

@@ -55,10 +55,11 @@ impl Database {
 
         tracing::info!("Opening database at {:?}", path);
 
-        let options = SqliteConnectOptions::from_str(path.to_str().ok_or_else(|| {
-            DbError::Path("Invalid UTF-8 in path".to_string())
-        })?)?
-            .create_if_missing(true);
+        let options = SqliteConnectOptions::from_str(
+            path.to_str()
+                .ok_or_else(|| DbError::Path("Invalid UTF-8 in path".to_string()))?,
+        )?
+        .create_if_missing(true);
 
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
@@ -71,9 +72,7 @@ impl Database {
     /// Run pending migrations
     pub async fn migrate(&self) -> Result<()> {
         tracing::info!("Running database migrations");
-        sqlx::migrate!("./migrations")
-            .run(&self.pool)
-            .await?;
+        sqlx::migrate!("./migrations").run(&self.pool).await?;
         Ok(())
     }
 
