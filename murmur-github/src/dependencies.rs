@@ -259,10 +259,10 @@ impl DependencyGraph {
             .collect();
 
         for &node in &all_nodes {
-            if !visited.contains(&node) {
-                if !self.topo_visit(node, &mut visited, &mut temp_visited, &mut order) {
-                    return None; // Cycle detected
-                }
+            if !visited.contains(&node)
+                && !self.topo_visit(node, &mut visited, &mut temp_visited, &mut order)
+            {
+                return None; // Cycle detected
             }
         }
 

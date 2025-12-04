@@ -121,7 +121,7 @@ impl GitRepo {
                 .peel_to_commit()
                 .map_err(|e| Error::Other(format!("Failed to resolve {}: {}", reference, e)))?;
 
-            let branch_name = reference.split('/').last().unwrap_or(reference).to_string();
+            let branch_name = reference.split('/').next_back().unwrap_or(reference).to_string();
 
             return Ok(BranchingPoint {
                 reference: reference.to_string(),
@@ -149,7 +149,7 @@ impl GitRepo {
                 .peel_to_commit()
                 .map_err(|e| Error::Other(format!("Failed to resolve {}: {}", reference, e)))?;
 
-            let branch_name = reference.split('/').last().unwrap_or(reference).to_string();
+            let branch_name = reference.split('/').next_back().unwrap_or(reference).to_string();
 
             return Ok(BranchingPoint {
                 reference: reference.to_string(),
@@ -222,8 +222,7 @@ mod tests {
 
             // Should find some branching point in a valid repo
             let result = repo.find_branching_point(&options);
-            if result.is_ok() {
-                let point = result.unwrap();
+            if let Ok(point) = result {
                 assert!(!point.commit.is_empty());
                 assert!(!point.branch_name.is_empty());
             }

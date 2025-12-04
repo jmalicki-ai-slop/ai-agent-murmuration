@@ -74,14 +74,13 @@ pub fn parse_plan(content: &str) -> Result<Plan> {
         }
 
         // Detect phase headers: ### Phase N: Name
-        if line.starts_with("### Phase ") {
+        if let Some(rest) = line.strip_prefix("### Phase ") {
             // Save previous phase
             if let Some(phase) = current_phase.take() {
                 plan.phases.push(phase);
             }
 
             // Parse phase header
-            let rest = &line[10..]; // Skip "### Phase "
             if let Some((id, name)) = parse_phase_header(rest) {
                 current_phase = Some(Phase {
                     id,
@@ -106,8 +105,8 @@ pub fn parse_plan(content: &str) -> Result<Plan> {
             }
 
             // Checkpoint line: **Checkpoint:** ...
-            if line.starts_with("**Checkpoint:**") {
-                phase.checkpoint = Some(line[15..].trim().to_string());
+            if let Some(rest) = line.strip_prefix("**Checkpoint:**") {
+                phase.checkpoint = Some(rest.trim().to_string());
                 continue;
             }
 
