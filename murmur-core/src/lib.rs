@@ -7,6 +7,7 @@ pub mod agent;
 pub mod config;
 pub mod error;
 pub mod git;
+pub mod plan;
 
 pub use agent::{
     AgentHandle, AgentSpawner, CostInfo, OutputStreamer, PrintHandler, StreamHandler, StreamMessage,
@@ -19,3 +20,4 @@ pub use git::{
     PoolConfig, RemoteInfo, RepoUrl, WorktreeInfo, WorktreeMetadata, WorktreeOptions, WorktreePool,
     WorktreeStatus,
 };
+pub use plan::{parse_plan, Phase, Plan, PlannedPR};
