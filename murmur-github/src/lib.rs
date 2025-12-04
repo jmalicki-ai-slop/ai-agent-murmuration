@@ -5,6 +5,8 @@
 
 mod client;
 mod error;
+mod issues;
 
 pub use client::GitHubClient;
 pub use error::{Error, Result};
+pub use issues::{Issue, IssueFilter, IssueState};
