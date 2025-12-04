@@ -4,6 +4,7 @@
 //! and tracking dependencies between work items.
 
 mod client;
+mod create;
 mod dependencies;
 mod error;
 mod issues;
@@ -11,6 +12,7 @@ mod metadata;
 mod pr;
 
 pub use client::GitHubClient;
+pub use create::{ImportOptions, ImportResult};
 pub use dependencies::{DependencyGraph, IssueDependencies, IssueRef};
 pub use error::{Error, Result};
 pub use issues::{Issue, IssueFilter, IssueState};
