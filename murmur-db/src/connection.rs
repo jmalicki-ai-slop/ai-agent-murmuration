@@ -94,6 +94,41 @@ impl Database {
             [],
         )?;
 
+        // Create conversation_logs table
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS conversation_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_run_id INTEGER NOT NULL,
+                sequence INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                message_type TEXT NOT NULL,
+                message_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+                UNIQUE(agent_run_id, sequence)
+            )",
+            [],
+        )?;
+
+        // Create indexes for conversation_logs
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversation_logs_agent_run
+             ON conversation_logs(agent_run_id, sequence)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversation_logs_timestamp
+             ON conversation_logs(timestamp)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversation_logs_message_type
+             ON conversation_logs(message_type)",
+            [],
+        )?;
+
         Ok(())
     }
 
@@ -127,6 +162,18 @@ mod tests {
             .connection()
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agent_runs'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+
+        // Verify conversation_logs table exists
+        let count: i32 = db
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='conversation_logs'",
                 [],
                 |row| row.get(0),
             )
