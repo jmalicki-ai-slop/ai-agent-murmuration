@@ -59,9 +59,10 @@ impl Database {
         }
 
         // Create connection options
-        let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", config.path.display()))?
-            .create_if_missing(true)
-            .disable_statement_logging();
+        let options =
+            SqliteConnectOptions::from_str(&format!("sqlite://{}", config.path.display()))?
+                .create_if_missing(true)
+                .disable_statement_logging();
 
         // Create connection pool
         let pool = SqlitePoolOptions::new()
@@ -78,9 +79,7 @@ impl Database {
         let migration_sql = include_str!("../migrations/001_initial_schema.sql");
 
         // Execute migration
-        sqlx::query(migration_sql)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(migration_sql).execute(&self.pool).await?;
 
         Ok(())
     }

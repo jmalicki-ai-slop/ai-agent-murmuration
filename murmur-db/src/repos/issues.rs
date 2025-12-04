@@ -1,9 +1,7 @@
 //! Issue repository for CRUD operations on GitHub issues
 
 use crate::error::{DbError, Result};
-use crate::models::{
-    CreateIssue, IssueState, IssueStatusHistory, UpdateIssue,
-};
+use crate::models::{CreateIssue, IssueState, IssueStatusHistory, UpdateIssue};
 use chrono::Utc;
 use sqlx::SqlitePool;
 
@@ -21,8 +19,14 @@ impl<'a> IssueRepository<'a> {
     /// Create a new issue record
     pub async fn create(&self, issue: CreateIssue) -> Result<IssueState> {
         let now = Utc::now();
-        let labels_json = issue.labels.map(|l| serde_json::to_string(&l)).transpose()?;
-        let assignees_json = issue.assignees.map(|a| serde_json::to_string(&a)).transpose()?;
+        let labels_json = issue
+            .labels
+            .map(|l| serde_json::to_string(&l))
+            .transpose()?;
+        let assignees_json = issue
+            .assignees
+            .map(|a| serde_json::to_string(&a))
+            .transpose()?;
 
         let result = sqlx::query(
             r#"
@@ -53,7 +57,8 @@ impl<'a> IssueRepository<'a> {
 
         // Record initial status if provided
         if let Some(status) = &issue.status {
-            self.record_status_change(id, None, status, Some("Initial status")).await?;
+            self.record_status_change(id, None, status, Some("Initial status"))
+                .await?;
         }
 
         self.get_by_id(id).await
@@ -61,29 +66,29 @@ impl<'a> IssueRepository<'a> {
 
     /// Get an issue by its internal ID
     pub async fn get_by_id(&self, id: i64) -> Result<IssueState> {
-        sqlx::query_as::<_, IssueState>(
-            "SELECT * FROM issues WHERE id = ?"
-        )
-        .bind(id)
-        .fetch_one(self.pool)
-        .await
-        .map_err(|e| match e {
-            sqlx::Error::RowNotFound => DbError::IssueNotFound("unknown".to_string(), id),
-            e => e.into(),
-        })
+        sqlx::query_as::<_, IssueState>("SELECT * FROM issues WHERE id = ?")
+            .bind(id)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| match e {
+                sqlx::Error::RowNotFound => DbError::IssueNotFound("unknown".to_string(), id),
+                e => e.into(),
+            })
     }
 
     /// Get an issue by repository and GitHub issue number
     pub async fn get_by_number(&self, repository: &str, issue_number: i64) -> Result<IssueState> {
         sqlx::query_as::<_, IssueState>(
-            "SELECT * FROM issues WHERE repository = ? AND github_issue_number = ?"
+            "SELECT * FROM issues WHERE repository = ? AND github_issue_number = ?",
         )
         .bind(repository)
         .bind(issue_number)
         .fetch_one(self.pool)
         .await
         .map_err(|e| match e {
-            sqlx::Error::RowNotFound => DbError::IssueNotFound(repository.to_string(), issue_number),
+            sqlx::Error::RowNotFound => {
+                DbError::IssueNotFound(repository.to_string(), issue_number)
+            }
             e => e.into(),
         })
     }
@@ -91,7 +96,7 @@ impl<'a> IssueRepository<'a> {
     /// List all issues for a repository
     pub async fn list_by_repository(&self, repository: &str) -> Result<Vec<IssueState>> {
         sqlx::query_as::<_, IssueState>(
-            "SELECT * FROM issues WHERE repository = ? ORDER BY github_issue_number DESC"
+            "SELECT * FROM issues WHERE repository = ? ORDER BY github_issue_number DESC",
         )
         .bind(repository)
         .fetch_all(self.pool)
@@ -191,7 +196,8 @@ impl<'a> IssueRepository<'a> {
                     current.status.as_deref(),
                     new_status,
                     Some("Status updated"),
-                ).await?;
+                )
+                .await?;
             }
         }
 
@@ -237,7 +243,7 @@ impl<'a> IssueRepository<'a> {
     /// Get status change history for an issue
     pub async fn get_status_history(&self, issue_id: i64) -> Result<Vec<IssueStatusHistory>> {
         sqlx::query_as::<_, IssueStatusHistory>(
-            "SELECT * FROM issue_status_history WHERE issue_id = ? ORDER BY changed_at ASC"
+            "SELECT * FROM issue_status_history WHERE issue_id = ? ORDER BY changed_at ASC",
         )
         .bind(issue_id)
         .fetch_all(self.pool)
@@ -252,7 +258,7 @@ impl<'a> IssueRepository<'a> {
             SELECT i.* FROM issues i
             INNER JOIN agent_runs ar ON i.id = ar.issue_id
             WHERE ar.id = ?
-            "#
+            "#,
         )
         .bind(agent_run_id)
         .fetch_optional(self.pool)
@@ -263,13 +269,14 @@ impl<'a> IssueRepository<'a> {
     /// Count issues by status
     pub async fn count_by_status(&self, repository: &str) -> Result<Vec<(String, i64)>> {
         let rows = sqlx::query_as::<_, (Option<String>, i64)>(
-            "SELECT status, COUNT(*) as count FROM issues WHERE repository = ? GROUP BY status"
+            "SELECT status, COUNT(*) as count FROM issues WHERE repository = ? GROUP BY status",
         )
         .bind(repository)
         .fetch_all(self.pool)
         .await?;
 
-        Ok(rows.into_iter()
+        Ok(rows
+            .into_iter()
             .map(|(status, count)| (status.unwrap_or_else(|| "none".to_string()), count))
             .collect())
     }
