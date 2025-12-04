@@ -55,9 +55,7 @@ pub enum StreamMessage {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
     /// Text content
-    Text {
-        text: String,
-    },
+    Text { text: String },
     /// Tool use content
     ToolUse {
         id: String,
@@ -261,7 +259,8 @@ mod tests {
     #[test]
     fn test_parse_assistant_message_new_format() {
         // New Claude Code format with content as array
-        let json = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello world"}]}}"#;
+        let json =
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello world"}]}}"#;
         let msg: StreamMessage = serde_json::from_str(json).unwrap();
         match msg {
             StreamMessage::Assistant { message } => {

@@ -121,7 +121,11 @@ impl GitRepo {
                 .peel_to_commit()
                 .map_err(|e| Error::Other(format!("Failed to resolve {}: {}", reference, e)))?;
 
-            let branch_name = reference.split('/').next_back().unwrap_or(reference).to_string();
+            let branch_name = reference
+                .split('/')
+                .next_back()
+                .unwrap_or(reference)
+                .to_string();
 
             return Ok(BranchingPoint {
                 reference: reference.to_string(),
@@ -149,7 +153,11 @@ impl GitRepo {
                 .peel_to_commit()
                 .map_err(|e| Error::Other(format!("Failed to resolve {}: {}", reference, e)))?;
 
-            let branch_name = reference.split('/').next_back().unwrap_or(reference).to_string();
+            let branch_name = reference
+                .split('/')
+                .next_back()
+                .unwrap_or(reference)
+                .to_string();
 
             return Ok(BranchingPoint {
                 reference: reference.to_string(),

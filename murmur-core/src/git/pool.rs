@@ -15,7 +15,7 @@ use crate::{Error, Result};
 const METADATA_FILE: &str = ".murmur-worktree.toml";
 
 /// Status of a cached worktree
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WorktreeStatus {
     /// Actively being used by an agent
@@ -25,13 +25,8 @@ pub enum WorktreeStatus {
     /// Work was abandoned or failed
     Abandoned,
     /// Ready to be reused
+    #[default]
     Available,
-}
-
-impl Default for WorktreeStatus {
-    fn default() -> Self {
-        Self::Available
-    }
 }
 
 /// Metadata stored with each cached worktree
