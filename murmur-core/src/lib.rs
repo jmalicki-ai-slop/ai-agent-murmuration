@@ -15,7 +15,6 @@ pub use agent::{
 };
 pub use config::{AgentConfig, Config};
 pub use error::{Error, Result};
-pub use secrets::{GitHubSecrets, Secrets};
 pub use git::{
     cached_repo_path, clone_repo, default_cache_dir, default_repos_cache_dir, fetch_repo,
     is_repo_cached, worktree_path, BranchingOptions, BranchingPoint, CachedWorktree, GitRepo,
@@ -23,3 +22,4 @@ pub use git::{
     WorktreeStatus,
 };
 pub use plan::{parse_plan, Phase, Plan, PlannedPR};
+pub use secrets::{GitHubSecrets, Secrets};

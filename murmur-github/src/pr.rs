@@ -109,9 +109,7 @@ impl GitHubClient {
             .get(number)
             .await
             .map_err(|e| match &e {
-                octocrab::Error::GitHub { source, .. }
-                    if source.message.contains("Not Found") =>
-                {
+                octocrab::Error::GitHub { source, .. } if source.message.contains("Not Found") => {
                     Error::PrNotFound(number)
                 }
                 _ => Error::Api(e),
@@ -170,11 +168,7 @@ impl GitHubClient {
             })
             .collect();
 
-        info!(
-            issue_number,
-            count = matching.len(),
-            "Found PRs for issue"
-        );
+        info!(issue_number, count = matching.len(), "Found PRs for issue");
 
         Ok(matching)
     }
@@ -211,7 +205,9 @@ impl GitHubClient {
         // Check if any PR is open (in progress)
         for pr in &prs {
             if pr.state == PrState::Open {
-                return Ok(DependencyStatus::InProgress { pr_number: pr.number });
+                return Ok(DependencyStatus::InProgress {
+                    pr_number: pr.number,
+                });
             }
         }
 

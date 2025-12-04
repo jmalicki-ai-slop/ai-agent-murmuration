@@ -82,9 +82,7 @@ impl GitHubClient {
             .get(number)
             .await
             .map_err(|e| match &e {
-                octocrab::Error::GitHub { source, .. }
-                    if source.message.contains("Not Found") =>
-                {
+                octocrab::Error::GitHub { source, .. } if source.message.contains("Not Found") => {
                     Error::IssueNotFound(number)
                 }
                 _ => Error::Api(e),

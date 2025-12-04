@@ -129,9 +129,8 @@ pub fn clone_repo(repo_url: &RepoUrl, cache_dir: Option<&Path>) -> Result<PathBu
 
     // Create parent directories
     if let Some(parent) = target_dir.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            Error::Other(format!("Failed to create repos cache directory: {}", e))
-        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| Error::Other(format!("Failed to create repos cache directory: {}", e)))?;
     }
 
     // Clone the repository

@@ -127,7 +127,12 @@ pub fn parse_depends_on_links(body: &str) -> Vec<u64> {
     let mut deps = Vec::new();
 
     // Pattern: "Depends on #123" or "depends on #123"
-    let patterns = ["Depends on #", "depends on #", "Blocked by #", "blocked by #"];
+    let patterns = [
+        "Depends on #",
+        "depends on #",
+        "Blocked by #",
+        "blocked by #",
+    ];
 
     for pattern in patterns {
         for part in body.split(pattern).skip(1) {

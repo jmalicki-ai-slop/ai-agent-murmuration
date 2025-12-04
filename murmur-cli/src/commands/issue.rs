@@ -2,8 +2,8 @@
 
 use clap::{Args, Subcommand, ValueEnum};
 use murmur_github::{
-    DependencyGraph, DependencyStatus, GitHubClient, IssueFilter, IssueDependencies,
-    IssueMetadata, IssueState,
+    DependencyGraph, DependencyStatus, GitHubClient, IssueDependencies, IssueFilter, IssueMetadata,
+    IssueState,
 };
 
 /// Issue management commands
@@ -157,7 +157,10 @@ async fn list_issues(
             String::new()
         };
 
-        println!("{} #{}: {}{}", state_icon, issue.number, issue.title, labels);
+        println!(
+            "{} #{}: {}{}",
+            state_icon, issue.number, issue.title, labels
+        );
     }
 
     Ok(())
@@ -179,7 +182,10 @@ async fn show_issue(number: u64, repo: Option<&str>, verbose: bool) -> anyhow::R
 
     println!();
     println!("#{}: {}", issue.number, issue.title);
-    println!("{}", "=".repeat(issue.title.len() + format!("#{}: ", issue.number).len()));
+    println!(
+        "{}",
+        "=".repeat(issue.title.len() + format!("#{}: ", issue.number).len())
+    );
     println!();
 
     let state_str = match issue.state {
@@ -192,14 +198,8 @@ async fn show_issue(number: u64, repo: Option<&str>, verbose: bool) -> anyhow::R
         println!("Labels: {}", issue.labels.join(", "));
     }
 
-    println!(
-        "Created: {}",
-        issue.created_at.format("%Y-%m-%d %H:%M UTC")
-    );
-    println!(
-        "Updated: {}",
-        issue.updated_at.format("%Y-%m-%d %H:%M UTC")
-    );
+    println!("Created: {}", issue.created_at.format("%Y-%m-%d %H:%M UTC"));
+    println!("Updated: {}", issue.updated_at.format("%Y-%m-%d %H:%M UTC"));
 
     // Parse and show metadata
     if let Some(metadata) = IssueMetadata::parse(&issue.body) {

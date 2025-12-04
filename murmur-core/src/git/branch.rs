@@ -35,9 +35,10 @@ impl GitRepo {
     pub fn fetch(&self, remote_name: Option<&str>) -> Result<()> {
         let remote_name = remote_name.unwrap_or("origin");
 
-        let mut remote = self.inner().find_remote(remote_name).map_err(|e| {
-            Error::Config(format!("Remote '{}' not found: {}", remote_name, e))
-        })?;
+        let mut remote = self
+            .inner()
+            .find_remote(remote_name)
+            .map_err(|e| Error::Config(format!("Remote '{}' not found: {}", remote_name, e)))?;
 
         // Set up callbacks for progress (silent for now)
         let mut callbacks = RemoteCallbacks::new();
@@ -68,7 +69,11 @@ impl GitRepo {
         if options.fetch {
             let remote = options.remote.as_deref().unwrap_or("origin");
             if let Err(e) = self.fetch(Some(remote)) {
-                tracing::warn!("Failed to fetch from {}: {}. Continuing with local state.", remote, e);
+                tracing::warn!(
+                    "Failed to fetch from {}: {}. Continuing with local state.",
+                    remote,
+                    e
+                );
             }
         }
 
@@ -116,11 +121,7 @@ impl GitRepo {
                 .peel_to_commit()
                 .map_err(|e| Error::Other(format!("Failed to resolve {}: {}", reference, e)))?;
 
-            let branch_name = reference
-                .split('/')
-                .last()
-                .unwrap_or(reference)
-                .to_string();
+            let branch_name = reference.split('/').last().unwrap_or(reference).to_string();
 
             return Ok(BranchingPoint {
                 reference: reference.to_string(),
@@ -148,11 +149,7 @@ impl GitRepo {
                 .peel_to_commit()
                 .map_err(|e| Error::Other(format!("Failed to resolve {}: {}", reference, e)))?;
 
-            let branch_name = reference
-                .split('/')
-                .last()
-                .unwrap_or(reference)
-                .to_string();
+            let branch_name = reference.split('/').last().unwrap_or(reference).to_string();
 
             return Ok(BranchingPoint {
                 reference: reference.to_string(),
@@ -168,10 +165,13 @@ impl GitRepo {
     pub fn list_local_branches(&self) -> Result<Vec<String>> {
         let mut branches = Vec::new();
 
-        for branch in self.inner().branches(Some(BranchType::Local)).map_err(|e| {
-            Error::Other(format!("Failed to list branches: {}", e))
-        })? {
-            let (branch, _) = branch.map_err(|e| Error::Other(format!("Failed to read branch: {}", e)))?;
+        for branch in self
+            .inner()
+            .branches(Some(BranchType::Local))
+            .map_err(|e| Error::Other(format!("Failed to list branches: {}", e)))?
+        {
+            let (branch, _) =
+                branch.map_err(|e| Error::Other(format!("Failed to read branch: {}", e)))?;
             if let Some(name) = branch.name().ok().flatten() {
                 branches.push(name.to_string());
             }
@@ -185,10 +185,13 @@ impl GitRepo {
         let mut branches = Vec::new();
         let filter_prefix = remote.map(|r| format!("{}/", r));
 
-        for branch in self.inner().branches(Some(BranchType::Remote)).map_err(|e| {
-            Error::Other(format!("Failed to list branches: {}", e))
-        })? {
-            let (branch, _) = branch.map_err(|e| Error::Other(format!("Failed to read branch: {}", e)))?;
+        for branch in self
+            .inner()
+            .branches(Some(BranchType::Remote))
+            .map_err(|e| Error::Other(format!("Failed to list branches: {}", e)))?
+        {
+            let (branch, _) =
+                branch.map_err(|e| Error::Other(format!("Failed to read branch: {}", e)))?;
             if let Some(name) = branch.name().ok().flatten() {
                 // Filter by remote if specified
                 if let Some(ref prefix) = filter_prefix {

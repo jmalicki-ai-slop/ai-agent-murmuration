@@ -305,7 +305,10 @@ impl DependencyGraph {
 
 /// Parse "Depends on #X" and "Depends on owner/repo#X" patterns
 fn parse_depends_pattern(body: &str) -> Vec<IssueRef> {
-    parse_issue_refs(body, &["Depends on", "depends on", "Depend on", "depend on"])
+    parse_issue_refs(
+        body,
+        &["Depends on", "depends on", "Depend on", "depend on"],
+    )
 }
 
 /// Parse "Blocked by #X" patterns
@@ -364,7 +367,10 @@ fn parse_single_issue_ref(s: &str) -> Option<IssueRef> {
         let after_hash = &s[hash_pos + 1..];
 
         // Parse the number
-        let num_str: String = after_hash.chars().take_while(|c| c.is_ascii_digit()).collect();
+        let num_str: String = after_hash
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
         let number = num_str.parse::<u64>().ok()?;
 
         if before_hash.is_empty() {

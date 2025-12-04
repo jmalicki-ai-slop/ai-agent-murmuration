@@ -58,7 +58,10 @@ impl RunArgs {
         println!();
 
         if self.dry_run {
-            println!("[Dry run] Would spawn {} agent(s) with the above configuration", self.agents);
+            println!(
+                "[Dry run] Would spawn {} agent(s) with the above configuration",
+                self.agents
+            );
             println!("[Dry run] Claude path: {}", config.agent.claude_path);
             return Ok(());
         }
