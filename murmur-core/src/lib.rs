@@ -6,9 +6,11 @@
 pub mod agent;
 pub mod config;
 pub mod error;
+pub mod git;
 
 pub use agent::{
     AgentHandle, AgentSpawner, CostInfo, OutputStreamer, PrintHandler, StreamHandler, StreamMessage,
 };
 pub use config::{AgentConfig, Config};
 pub use error::{Error, Result};
+pub use git::{GitRepo, RemoteInfo};
