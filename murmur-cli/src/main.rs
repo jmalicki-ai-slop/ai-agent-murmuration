@@ -2,8 +2,12 @@
 //!
 //! Multi-agent orchestration for software development with Claude Code.
 
-use clap::Parser;
+mod commands;
+
+use clap::{Parser, Subcommand};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+use commands::RunArgs;
 
 /// Murmuration: Multi-agent orchestration for software development
 #[derive(Parser, Debug)]
@@ -18,10 +22,14 @@ struct Cli {
     command: Option<Commands>,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     /// Show version information
     Version,
+
+    /// Run a task with Murmuration agents
+    #[command(visible_alias = "r")]
+    Run(RunArgs),
 }
 
 #[tokio::main]
@@ -41,6 +49,9 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Some(Commands::Version) => {
             println!("murmur {}", env!("CARGO_PKG_VERSION"));
+        }
+        Some(Commands::Run(args)) => {
+            args.execute(cli.verbose).await?;
         }
         None => {
             println!("Murmuration - Multi-agent orchestration for software development");
