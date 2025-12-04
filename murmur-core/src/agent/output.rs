@@ -50,11 +50,42 @@ pub enum StreamMessage {
     },
 }
 
+/// A content block in an assistant message
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentBlock {
+    /// Text content
+    Text {
+        text: String,
+    },
+    /// Tool use content
+    ToolUse {
+        id: String,
+        name: String,
+        #[serde(default)]
+        input: serde_json::Value,
+    },
+}
+
 /// Assistant message content
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct AssistantMessage {
     #[serde(default)]
-    pub content: String,
+    pub content: Vec<ContentBlock>,
+}
+
+impl AssistantMessage {
+    /// Extract all text content from the message, concatenated
+    pub fn text(&self) -> String {
+        self.content
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    }
 }
 
 /// Cost information from the result
@@ -206,7 +237,7 @@ impl OutputStreamer {
                 handler.on_system(subtype.as_deref(), session_id.as_deref());
             }
             StreamMessage::Assistant { message } => {
-                handler.on_assistant_text(&message.content);
+                handler.on_assistant_text(&message.text());
             }
             StreamMessage::ToolUse { tool, input } => {
                 handler.on_tool_use(&tool, &input);
@@ -228,12 +259,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_assistant_message() {
-        let json = r#"{"type":"assistant","message":{"content":"Hello world"}}"#;
+    fn test_parse_assistant_message_new_format() {
+        // New Claude Code format with content as array
+        let json = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello world"}]}}"#;
         let msg: StreamMessage = serde_json::from_str(json).unwrap();
         match msg {
             StreamMessage::Assistant { message } => {
-                assert_eq!(message.content, "Hello world");
+                assert_eq!(message.text(), "Hello world");
+            }
+            _ => panic!("Expected Assistant message"),
+        }
+    }
+
+    #[test]
+    fn test_parse_assistant_message_with_tool_use() {
+        // Message with both text and tool_use content blocks
+        let json = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Let me read that file."},{"type":"tool_use","id":"toolu_123","name":"Read","input":{"file_path":"/test.txt"}}]}}"#;
+        let msg: StreamMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            StreamMessage::Assistant { message } => {
+                assert_eq!(message.text(), "Let me read that file.");
+                assert_eq!(message.content.len(), 2);
+            }
+            _ => panic!("Expected Assistant message"),
+        }
+    }
+
+    #[test]
+    fn test_parse_assistant_message_empty_content() {
+        // Empty content array
+        let json = r#"{"type":"assistant","message":{"content":[]}}"#;
+        let msg: StreamMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            StreamMessage::Assistant { message } => {
+                assert_eq!(message.text(), "");
             }
             _ => panic!("Expected Assistant message"),
         }
