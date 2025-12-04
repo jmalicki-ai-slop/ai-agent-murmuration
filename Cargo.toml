@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "murmur-core",
     "murmur-cli",
+    "murmur-github",
 ]
 
 [workspace.package]
@@ -39,5 +40,9 @@ anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# GitHub API
+octocrab = "0.41"
+
 # Internal crates
 murmur-core = { path = "murmur-core" }
+murmur-github = { path = "murmur-github" }
