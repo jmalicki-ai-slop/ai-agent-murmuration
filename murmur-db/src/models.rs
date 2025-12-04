@@ -89,6 +89,76 @@ impl AgentRun {
     }
 }
 
+/// Conversation log entry storing JSON output from agents
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationLog {
+    /// Unique identifier for this log entry
+    pub id: Option<i64>,
+
+    /// The agent run this conversation belongs to
+    pub agent_run_id: i64,
+
+    /// Sequence number for ordering messages in the conversation
+    pub sequence: i64,
+
+    /// Timestamp when this message was received
+    pub timestamp: DateTime<Utc>,
+
+    /// The type of message (system, user, assistant, tool_use, tool_result, result)
+    pub message_type: String,
+
+    /// The full JSON message as received from Claude Code
+    pub message_json: String,
+
+    /// When this record was created
+    pub created_at: DateTime<Utc>,
+}
+
+impl ConversationLog {
+    /// Create a new conversation log entry
+    pub fn new(
+        agent_run_id: i64,
+        sequence: i64,
+        message_type: impl Into<String>,
+        message_json: impl Into<String>,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: None,
+            agent_run_id,
+            sequence,
+            timestamp: now,
+            message_type: message_type.into(),
+            message_json: message_json.into(),
+            created_at: now,
+        }
+    }
+
+    /// Create a new entry with a custom timestamp
+    pub fn with_timestamp(
+        agent_run_id: i64,
+        sequence: i64,
+        message_type: impl Into<String>,
+        message_json: impl Into<String>,
+        timestamp: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            id: None,
+            agent_run_id,
+            sequence,
+            timestamp,
+            message_type: message_type.into(),
+            message_json: message_json.into(),
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Parse the JSON message into a structured type
+    pub fn parse_message<T: serde::de::DeserializeOwned>(&self) -> serde_json::Result<T> {
+        serde_json::from_str(&self.message_json)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,5 +201,45 @@ mod tests {
         assert!(run.is_completed());
         assert!(!run.is_successful());
         assert_eq!(run.exit_code, Some(1));
+    }
+
+    #[test]
+    fn test_conversation_log_new() {
+        let log = ConversationLog::new(
+            123,
+            0,
+            "assistant",
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}"#,
+        );
+        assert_eq!(log.agent_run_id, 123);
+        assert_eq!(log.sequence, 0);
+        assert_eq!(log.message_type, "assistant");
+        assert!(log.id.is_none());
+    }
+
+    #[test]
+    fn test_conversation_log_with_timestamp() {
+        let timestamp = Utc::now();
+        let log = ConversationLog::with_timestamp(
+            456,
+            1,
+            "tool_use",
+            r#"{"type":"tool_use","tool":"Read"}"#,
+            timestamp,
+        );
+        assert_eq!(log.agent_run_id, 456);
+        assert_eq!(log.sequence, 1);
+        assert_eq!(log.timestamp, timestamp);
+    }
+
+    #[test]
+    fn test_conversation_log_parse_message() {
+        use serde_json::Value;
+
+        let json = r#"{"type":"assistant","message":{"content":[]}}"#;
+        let log = ConversationLog::new(1, 0, "assistant", json);
+
+        let parsed: Value = log.parse_message().unwrap();
+        assert_eq!(parsed["type"], "assistant");
     }
 }
