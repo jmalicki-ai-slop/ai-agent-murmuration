@@ -1,405 +1,573 @@
-# Dispatch: Issue-Based Agent Orchestration System
+# Murmuration: Issue-Based Multi-Agent Orchestration
 
 ## Master Plan
 
-This document tracks the high-level planning and implementation process for Dispatch - a system that uses GitHub issues as the primary interface for orchestrating multiple AI agents working collaboratively on software development tasks.
+This document tracks the implementation of Murmuration - a system that uses GitHub issues as the primary interface for orchestrating multiple AI agents working collaboratively on software development tasks.
+
+**Goal: Bootstrap as early as possible. Use Murmuration to build Murmuration.**
 
 ---
 
 ## System Overview
 
-**Key Features:**
-- GitHub Issues as the primary UI for task management
-- Multiple specialized agents (Coder, Reviewer, PM, Security, Docs, Test, Architect, Coordinator)
-- Sangha governance model with democratic voting and human override
-- TDD workflow with red-green-refactor cycles
-- Coordinator agents for multi-agent orchestration
-- Git worktrees for parallel isolated development
-- Epics with stage gates and approval workflows
-- TUI and Web UI for monitoring and control
+**Core Philosophy:**
+- Get to self-hosting fast, then progressively enhance
+- Distinct specialized agents (not one agent doing everything)
+- TDD workflow with enforced red-green validation
+- Review agents at every phase transition
+- Human approval (voting comes later)
+
+**MVP Features (for self-hosting):**
+- GitHub Issues as task source
+- Git worktrees with smart branching (from updated main, cached pool, clone unknown repos)
+- Agent spawning: Coder, Reviewer, Test agents
+- Red-green TDD: tests must fail → implement → tests must pass
+- Coordinator routing feedback between agents
+- Basic CLI to trigger and monitor
+
+**Deferred Features:**
+- Democratic voting/proposals (human approves for now)
+- TUI and Web UI
+- Webhooks (manual trigger initially)
+- Complex consensus thresholds
 
 ---
 
-## Phase 0: Planning & Design
+## Bootstrap Phases
 
-| Item | Status | Document |
-|------|--------|----------|
-| 0.1 High-level architecture requirements | ✅ Done | `issue-dispatch-system-design.md` |
-| 0.2 Core data models | ✅ Done | `issue-dispatch-system-design.md` |
-| 0.3 Workflow designs | ✅ Done | `issue-dispatch-system-design.md` |
-| 0.4 Technology choices | ✅ Done | `issue-dispatch-system-design.md` |
-| 0.5 Rust module/crate design | ✅ Done | `design/code-structure.md` |
-| 0.6 CLI command design | ✅ Done | `design/cli-design.md` |
-| 0.7 GitHub integration design | ✅ Done | `design/github-integration.md` |
-| 0.8 Agent execution design | ✅ Done | `design/agent-execution.md` |
-| 0.9 Sangha governance design | ✅ Done | `design/sangha-governance.md` |
-| 0.10 TUI design | ✅ Done | `design/tui-design.md` |
-| 0.11 Configuration design | ✅ Done | `design/configuration.md` |
-| 0.12 Error handling strategy | ✅ Done | `design/error-handling.md` |
-| 0.13 Testing strategy | ✅ Done | `design/testing-strategy.md` |
-| 0.14 WebSocket API design | ✅ Done | `design/api/websocket-api.md` |
-| 0.15 REST API design | ✅ Done | `design/api/rest-api.md` |
+### Phase 1: Minimal CLI + Agent Spawning
+*Goal: Can spawn a Claude Code agent on a task*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-001 | Rust workspace with minimal crates | `Cargo.toml`, `murmur-core/`, `murmur-cli/` |
+| PR-002 | Basic CLI with `murmur run <prompt>` | `murmur-cli/src/main.rs` |
+| PR-003 | Claude Code subprocess spawning | `murmur-core/src/agent/spawn.rs` |
+| PR-004 | Agent output streaming to terminal | `murmur-core/src/agent/output.rs` |
+| PR-005 | Basic config (claude path, model) | `murmur-core/src/config.rs` |
+
+**Checkpoint:** Can run `murmur run "fix the typo in README"` and see Claude work.
 
 ---
 
-## Phase 1: Foundation
+### Phase 2: Git Worktrees (Smart)
+*Goal: Isolated workspaces with intelligent branching*
 
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-001 | Initialize Rust workspace with crate structure | 🔲 Todo | `Cargo.toml`, workspace setup |
-| PR-001a | dispatch-core crate skeleton | 🔲 Todo | `dispatch-core/` |
-| PR-001b | dispatch-db crate skeleton | 🔲 Todo | `dispatch-db/` |
-| PR-001c | dispatch-github crate skeleton | 🔲 Todo | `dispatch-github/` |
-| PR-001d | dispatch-agent crate skeleton | 🔲 Todo | `dispatch-agent/` |
-| PR-001e | dispatch-cli crate skeleton | 🔲 Todo | `dispatch-cli/` |
-| PR-001f | dispatch-tui crate skeleton | 🔲 Todo | `dispatch-tui/` |
-| PR-001g | dispatch-server crate skeleton | 🔲 Todo | `dispatch-server/` |
-| PR-002 | CI/CD setup (GitHub Actions) | 🔲 Todo | `.github/workflows/` |
-| PR-002a | Test workflow | 🔲 Todo | `ci.yml` |
-| PR-002b | Release workflow | 🔲 Todo | `release.yml` |
-| PR-003 | SQLite schema + migrations | 🔲 Todo | `dispatch-db/migrations/` |
-| PR-003a | Core tables (issues, epics, agents) | 🔲 Todo | `001_core.sql` |
-| PR-003b | Governance tables (proposals, votes) | 🔲 Todo | `002_governance.sql` |
-| PR-003c | Workflow tables (workflows, feedback, reviews) | 🔲 Todo | `003_workflows.sql` |
-| PR-003d | Config and sync tables | 🔲 Todo | `004_config.sql` |
-| PR-004 | Core types and error definitions | 🔲 Todo | `dispatch-core/src/` |
-| PR-004a | ID types (IssueId, AgentId, etc.) | 🔲 Todo | `types/ids.rs` |
-| PR-004b | Issue type and state machine | 🔲 Todo | `types/issue.rs` |
-| PR-004c | Epic and Stage types | 🔲 Todo | `types/epic.rs` |
-| PR-004d | Agent types | 🔲 Todo | `types/agent.rs` |
-| PR-004e | Proposal and Vote types | 🔲 Todo | `types/governance.rs` |
-| PR-004f | Workflow types (TDD, reviews) | 🔲 Todo | `types/workflow.rs` |
-| PR-004g | Error types with thiserror | 🔲 Todo | `error.rs` |
-| PR-005 | Database layer implementation | 🔲 Todo | `dispatch-db/src/` |
-| PR-005a | Database connection pool | 🔲 Todo | `db.rs` |
-| PR-005b | Issue repository | 🔲 Todo | `repos/issues.rs` |
-| PR-005c | Epic repository | 🔲 Todo | `repos/epics.rs` |
-| PR-005d | Agent repository | 🔲 Todo | `repos/agents.rs` |
-| PR-005e | Proposal repository | 🔲 Todo | `repos/proposals.rs` |
-| PR-005f | Workflow repository | 🔲 Todo | `repos/workflows.rs` |
-| PR-006 | CLI skeleton with clap | 🔲 Todo | `dispatch-cli/src/` |
-| PR-006a | Main entry point and arg parsing | 🔲 Todo | `main.rs` |
-| PR-006b | Issue subcommands | 🔲 Todo | `commands/issue.rs` |
-| PR-006c | Epic subcommands | 🔲 Todo | `commands/epic.rs` |
-| PR-006d | Agent subcommands | 🔲 Todo | `commands/agent.rs` |
-| PR-006e | Proposal subcommands | 🔲 Todo | `commands/proposal.rs` |
-| PR-007 | Configuration loading | 🔲 Todo | `dispatch-core/src/config.rs` |
-| PR-007a | Config file parsing (TOML) | 🔲 Todo | `config.rs` |
-| PR-007b | Environment variable overrides | 🔲 Todo | `config.rs` |
-| PR-007c | Config CLI commands | 🔲 Todo | `dispatch-cli/src/commands/config.rs` |
-| PR-007d | Runtime config store | 🔲 Todo | `dispatch-db/src/repos/config.rs` |
-| PR-008 | Logging infrastructure | 🔲 Todo | `dispatch-core/src/logging.rs` |
-| PR-008a | tracing setup | 🔲 Todo | `logging.rs` |
-| PR-008b | File appender with rotation | 🔲 Todo | `logging.rs` |
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-006 | Git repo detection and validation | `murmur-core/src/git/repo.rs` |
+| PR-007 | Fetch and find best branching point | `murmur-core/src/git/branch.rs` |
+| PR-007a | Detect default branch (main/master) | |
+| PR-007b | Fetch latest from remote | |
+| PR-007c | Find merge-base for existing branches | |
+| PR-008 | Worktree creation from branching point | `murmur-core/src/git/worktree.rs` |
+| PR-009 | Worktree pool/cache management | `murmur-core/src/git/pool.rs` |
+| PR-009a | Cache directory (~/.cache/murmur/worktrees/) | |
+| PR-009b | Reuse existing worktrees when possible | |
+| PR-009c | LRU cleanup of old worktrees | |
+| PR-010 | Clone unknown repos on demand | `murmur-core/src/git/clone.rs` |
+| PR-011 | CLI: `murmur worktree create/list/clean` | `murmur-cli/src/commands/worktree.rs` |
+
+**Checkpoint:** Can run agents in isolated worktrees, worktrees branch from fresh main.
 
 ---
 
-## Phase 2: Git & Worktree Management
+### Phase 3: GitHub Integration (Read + Dependencies)
+*Goal: Pull issues from GitHub, understand dependencies*
 
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-009 | Git repository detection | 🔲 Todo | `dispatch-core/src/git.rs` |
-| PR-010 | Worktree creation | 🔲 Todo | `dispatch-core/src/worktree.rs` |
-| PR-011 | Worktree cleanup | 🔲 Todo | `worktree.rs` |
-| PR-012 | Branch naming conventions | 🔲 Todo | `worktree.rs` |
-| PR-013 | Worktree ↔ Issue linking | 🔲 Todo | `dispatch-db/src/repos/worktrees.rs` |
-| PR-014 | CLI: `dispatch worktree` commands | 🔲 Todo | `dispatch-cli/src/commands/worktree.rs` |
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-012 | GitHub API client (octocrab) | `murmur-github/src/client.rs` |
+| PR-013 | Fetch issues from repo | `murmur-github/src/issues.rs` |
+| PR-014 | Parse issue metadata from body | `murmur-github/src/metadata.rs` |
+| PR-015 | Parse issue dependencies | `murmur-github/src/dependencies.rs` |
+| PR-015a | "Depends on #X" / "Blocked by #X" parsing | |
+| PR-015b | "Parent: #X" for epic linking | |
+| PR-015c | Build dependency graph | |
+| PR-016 | Check PR merge status | `murmur-github/src/pr.rs` |
+| PR-016a | Is linked PR merged? | |
+| PR-016b | Are all dependency PRs merged? | |
+| PR-017 | CLI: `murmur issue list/show/deps` | `murmur-cli/src/commands/issue.rs` |
+| PR-018 | CLI: `murmur work <issue-number>` | `murmur-cli/src/commands/work.rs` |
+| PR-018a | Block if dependencies not met | |
+| PR-018b | Show what's blocking | |
 
----
-
-## Phase 3: Issue Management
-
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-015 | Issue state machine implementation | 🔲 Todo | `dispatch-core/src/types/issue.rs` |
-| PR-016 | Issue creation (local) | 🔲 Todo | `dispatch-db/src/repos/issues.rs` |
-| PR-017 | Issue querying/filtering | 🔲 Todo | `repos/issues.rs` |
-| PR-018 | Issue assignment logic | 🔲 Todo | `dispatch-core/src/assignment.rs` |
-| PR-019 | CLI: `dispatch issue` commands | 🔲 Todo | `dispatch-cli/src/commands/issue.rs` |
-| PR-020 | Issue priorities and ordering | 🔲 Todo | `repos/issues.rs` |
+**Checkpoint:** Can run `murmur work 42` - blocks if issue #42 depends on unmerged PRs.
 
 ---
 
-## Phase 4: Epic & Stage Management
+### Phase 3b: Plan Import to GitHub
+*Goal: Import PLAN.md phases as epics/issues with dependencies*
 
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-021 | Epic data model implementation | 🔲 Todo | `dispatch-core/src/types/epic.rs` |
-| PR-022 | Stage management | 🔲 Todo | `dispatch-core/src/stage.rs` |
-| PR-023 | Gate implementation | 🔲 Todo | `dispatch-core/src/gate.rs` |
-| PR-024 | Stage transitions | 🔲 Todo | `dispatch-core/src/epic.rs` |
-| PR-025 | CLI: `dispatch epic` commands | 🔲 Todo | `dispatch-cli/src/commands/epic.rs` |
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-019 | Parse PLAN.md structure | `murmur-core/src/plan/parser.rs` |
+| PR-019a | Extract phases as epics | |
+| PR-019b | Extract PRs as issues | |
+| PR-019c | Infer dependencies from ordering | |
+| PR-020 | Create GitHub issues from plan | `murmur-github/src/create.rs` |
+| PR-020a | Create epic issue with checklist | |
+| PR-020b | Create child issues with "Parent: #X" | |
+| PR-020c | Add "Depends on #X" for sequential items | |
+| PR-021 | CLI: `murmur plan import` | `murmur-cli/src/commands/plan.rs` |
+| PR-022 | CLI: `murmur plan status` (show tree) | `murmur-cli/src/commands/plan.rs` |
 
----
-
-## Phase 5: Agent Execution
-
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-026 | Agent executor base | 🔲 Todo | `dispatch-agent/src/executor.rs` |
-| PR-027 | Claude Code subprocess spawning | 🔲 Todo | `dispatch-agent/src/spawn.rs` |
-| PR-028 | Agent lifecycle (start, monitor, stop) | 🔲 Todo | `dispatch-agent/src/lifecycle.rs` |
-| PR-029 | Heartbeat monitoring | 🔲 Todo | `dispatch-agent/src/heartbeat.rs` |
-| PR-030 | Agent type definitions | 🔲 Todo | `dispatch-agent/src/types/` |
-| PR-030a | Coder agent prompt | 🔲 Todo | `prompts/coder.md` |
-| PR-030b | Reviewer agent prompt | 🔲 Todo | `prompts/reviewer.md` |
-| PR-030c | PM agent prompt | 🔲 Todo | `prompts/pm.md` |
-| PR-030d | Security agent prompt | 🔲 Todo | `prompts/security.md` |
-| PR-030e | Test agent prompt | 🔲 Todo | `prompts/test.md` |
-| PR-030f | Docs agent prompt | 🔲 Todo | `prompts/docs.md` |
-| PR-030g | Architect agent prompt | 🔲 Todo | `prompts/architect.md` |
-| PR-030h | Coordinator agent prompt | 🔲 Todo | `prompts/coordinator.md` |
-| PR-031 | Issue → Agent context passing | 🔲 Todo | `dispatch-agent/src/context.rs` |
-| PR-032 | Agent output collection | 🔲 Todo | `dispatch-agent/src/output.rs` |
-| PR-033 | Agent failure handling | 🔲 Todo | `dispatch-agent/src/error.rs` |
-| PR-034 | CLI: `dispatch agent` commands | 🔲 Todo | `dispatch-cli/src/commands/agent.rs` |
+**Checkpoint:** Can run `murmur plan import` to create all GitHub issues from PLAN.md.
 
 ---
 
-## Phase 6: GitHub Integration
+### Phase 4: Agent Types + Prompts
+*Goal: Distinct specialized agents with role-specific prompts*
 
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-035 | GitHub API client setup (octocrab) | 🔲 Todo | `dispatch-github/src/client.rs` |
-| PR-036 | Issue sync: GitHub → Local | 🔲 Todo | `dispatch-github/src/sync/inbound.rs` |
-| PR-037 | Issue sync: Local → GitHub | 🔲 Todo | `dispatch-github/src/sync/outbound.rs` |
-| PR-038 | Metadata storage in issue body | 🔲 Todo | `dispatch-github/src/metadata.rs` |
-| PR-039 | Comment command parsing | 🔲 Todo | `dispatch-github/src/commands.rs` |
-| PR-040 | Webhook receiver (axum) | 🔲 Todo | `dispatch-github/src/webhook/mod.rs` |
-| PR-041 | Webhook event handlers | 🔲 Todo | `dispatch-github/src/webhook/handlers.rs` |
-| PR-042 | PR creation and linking | 🔲 Todo | `dispatch-github/src/pr.rs` |
-| PR-043 | PR status tracking | 🔲 Todo | `dispatch-github/src/pr.rs` |
-| PR-044 | Sync engine with rate limiting | 🔲 Todo | `dispatch-github/src/sync/engine.rs` |
-| PR-045 | CLI: `dispatch sync` commands | 🔲 Todo | `dispatch-cli/src/commands/sync.rs` |
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-023 | Agent type enum and config | `murmur-core/src/agent/types.rs` |
+| PR-024 | System prompt loading from files | `murmur-core/src/agent/prompts.rs` |
+| PR-025 | Coder agent prompt | `prompts/coder.md` |
+| PR-026 | Reviewer agent prompt | `prompts/reviewer.md` |
+| PR-027 | Test agent prompt | `prompts/test.md` |
+| PR-028 | Context building (issue, files, history) | `murmur-core/src/agent/context.rs` |
+| PR-029 | CLI: `murmur agent start --type coder` | `murmur-cli/src/commands/agent.rs` |
 
----
-
-## Phase 7: Sangha Governance
-
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-046 | Proposal creation | 🔲 Todo | `dispatch-core/src/governance/proposal.rs` |
-| PR-047 | Voting mechanism | 🔲 Todo | `dispatch-core/src/governance/voting.rs` |
-| PR-048 | Consensus calculation | 🔲 Todo | `dispatch-core/src/governance/consensus.rs` |
-| PR-048a | Property tests for consensus | 🔲 Todo | `tests/proptest_consensus.rs` |
-| PR-049 | Proposal execution | 🔲 Todo | `dispatch-core/src/governance/execution.rs` |
-| PR-050 | Human override: force decision | 🔲 Todo | `dispatch-core/src/governance/override.rs` |
-| PR-051 | Human override: veto | 🔲 Todo | `governance/override.rs` |
-| PR-052 | Decision logging | 🔲 Todo | `dispatch-db/src/repos/decisions.rs` |
-| PR-053 | CLI: `dispatch proposal` commands | 🔲 Todo | `dispatch-cli/src/commands/proposal.rs` |
+**Checkpoint:** Can spawn different agent types with appropriate prompts.
 
 ---
 
-## Phase 8: TDD Workflows & Coordinator
+### Phase 5: TDD Workflow (Red-Green)
+*Goal: Enforced test-first development with validation*
 
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-054 | Coordinator agent infrastructure | 🔲 Todo | `dispatch-agent/src/coordinator/mod.rs` |
-| PR-055 | Workflow state machine | 🔲 Todo | `dispatch-core/src/workflow/mod.rs` |
-| PR-056 | TDD workflow implementation | 🔲 Todo | `dispatch-core/src/workflow/tdd.rs` |
-| PR-056a | Specification phase | 🔲 Todo | `workflow/tdd.rs` |
-| PR-056b | DesignReview phase | 🔲 Todo | `workflow/tdd.rs` |
-| PR-056c | WriteTests phase | 🔲 Todo | `workflow/tdd.rs` |
-| PR-056d | TestReview phase | 🔲 Todo | `workflow/tdd.rs` |
-| PR-056e | VerifyRed phase (tests must fail) | 🔲 Todo | `workflow/tdd.rs` |
-| PR-056f | Implementation phase | 🔲 Todo | `workflow/tdd.rs` |
-| PR-056g | CodeReview phase | 🔲 Todo | `workflow/tdd.rs` |
-| PR-056h | VerifyGreen phase (tests must pass) | 🔲 Todo | `workflow/tdd.rs` |
-| PR-056i | Refactor phase | 🔲 Todo | `workflow/tdd.rs` |
-| PR-056j | FinalReview phase | 🔲 Todo | `workflow/tdd.rs` |
-| PR-057 | Design review workflow | 🔲 Todo | `dispatch-core/src/workflow/design_review.rs` |
-| PR-058 | Feedback routing system | 🔲 Todo | `dispatch-agent/src/coordinator/feedback.rs` |
-| PR-059 | Iteration management | 🔲 Todo | `dispatch-core/src/workflow/iteration.rs` |
-| PR-060 | Max iterations escalation | 🔲 Todo | `workflow/iteration.rs` |
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-030 | Workflow state machine | `murmur-core/src/workflow/mod.rs` |
+| PR-031 | TDD phases enum | `murmur-core/src/workflow/tdd.rs` |
+| PR-031a | WriteSpec phase | |
+| PR-031b | WriteTests phase | |
+| PR-031c | VerifyRed phase (tests MUST fail) | |
+| PR-031d | Implement phase | |
+| PR-031e | VerifyGreen phase (tests MUST pass) | |
+| PR-031f | Refactor phase | |
+| PR-032 | Test runner integration | `murmur-core/src/workflow/test_runner.rs` |
+| PR-032a | Detect test framework (cargo test, pytest, jest, etc.) | |
+| PR-032b | Run tests and parse results | |
+| PR-032c | Validate red (>0 failures) / green (0 failures) | |
+| PR-033 | Phase transition logic | `murmur-core/src/workflow/transitions.rs` |
+| PR-034 | CLI: `murmur tdd <issue>` | `murmur-cli/src/commands/tdd.rs` |
 
----
-
-## Phase 9: Human Override & Control
-
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-061 | Pause/resume agents | 🔲 Todo | `dispatch-agent/src/control.rs` |
-| PR-062 | Reassign issues | 🔲 Todo | `dispatch-core/src/assignment.rs` |
-| PR-063 | Cancel issues | 🔲 Todo | `repos/issues.rs` |
-| PR-064 | Skip gates | 🔲 Todo | `dispatch-core/src/gate.rs` |
-| PR-065 | Direct instruction via comments | 🔲 Todo | `dispatch-github/src/commands.rs` |
-| PR-066 | Gate approval workflow | 🔲 Todo | `dispatch-core/src/gate.rs` |
+**Checkpoint:** Can run TDD workflow that enforces tests fail before implementation.
 
 ---
 
-## Phase 10: TUI
+### Phase 6: Review Agents at Each Phase
+*Goal: Distinct reviewer agents gate each phase transition*
 
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-067 | TUI framework setup (ratatui) | 🔲 Todo | `dispatch-tui/src/` |
-| PR-068 | App state management | 🔲 Todo | `dispatch-tui/src/app.rs` |
-| PR-069 | Dashboard view | 🔲 Todo | `dispatch-tui/src/views/dashboard.rs` |
-| PR-070 | Issue list view | 🔲 Todo | `dispatch-tui/src/views/issues.rs` |
-| PR-071 | Agent status view | 🔲 Todo | `dispatch-tui/src/views/agents.rs` |
-| PR-072 | Epic/stage view | 🔲 Todo | `dispatch-tui/src/views/epics.rs` |
-| PR-073 | Proposal/voting view | 🔲 Todo | `dispatch-tui/src/views/proposals.rs` |
-| PR-074 | Log viewer | 🔲 Todo | `dispatch-tui/src/views/logs.rs` |
-| PR-075 | Keyboard navigation | 🔲 Todo | `dispatch-tui/src/input.rs` |
-| PR-076 | Command mode | 🔲 Todo | `dispatch-tui/src/command.rs` |
-| PR-077 | CLI: `dispatch tui` | 🔲 Todo | `dispatch-cli/src/commands/tui.rs` |
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-035 | Review request generation | `murmur-core/src/review/request.rs` |
+| PR-036 | Reviewer agent invocation | `murmur-core/src/review/reviewer.rs` |
+| PR-037 | Review feedback parsing | `murmur-core/src/review/feedback.rs` |
+| PR-038 | Phase gates with review requirement | `murmur-core/src/workflow/gates.rs` |
+| PR-038a | Spec review before WriteTests | |
+| PR-038b | Test review before VerifyRed | |
+| PR-038c | Code review before VerifyGreen | |
+| PR-038d | Final review before complete | |
+| PR-039 | Feedback routing back to coder | `murmur-core/src/review/routing.rs` |
+| PR-040 | Iteration tracking (attempt count) | `murmur-core/src/workflow/iteration.rs` |
 
----
-
-## Phase 11: Web Server & API
-
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-078 | Axum server setup | 🔲 Todo | `dispatch-server/src/` |
-| PR-079 | REST API infrastructure | 🔲 Todo | `dispatch-server/src/api/mod.rs` |
-| PR-079a | Health endpoints | 🔲 Todo | `api/health.rs` |
-| PR-079b | Issue endpoints | 🔲 Todo | `api/issues.rs` |
-| PR-079c | Epic endpoints | 🔲 Todo | `api/epics.rs` |
-| PR-079d | Agent endpoints | 🔲 Todo | `api/agents.rs` |
-| PR-079e | Proposal endpoints | 🔲 Todo | `api/proposals.rs` |
-| PR-079f | Workflow endpoints | 🔲 Todo | `api/workflows.rs` |
-| PR-079g | OpenAPI documentation | 🔲 Todo | `api/openapi.rs` |
-| PR-080 | WebSocket infrastructure | 🔲 Todo | `dispatch-server/src/websocket/mod.rs` |
-| PR-080a | Connection handler | 🔲 Todo | `websocket/handler.rs` |
-| PR-080b | Event publishing | 🔲 Todo | `dispatch-core/src/events.rs` |
-| PR-080c | Channel subscriptions | 🔲 Todo | `websocket/channels.rs` |
-| PR-081 | Authentication middleware | 🔲 Todo | `dispatch-server/src/auth.rs` |
-| PR-082 | CLI: `dispatch serve` | 🔲 Todo | `dispatch-cli/src/commands/serve.rs` |
+**Checkpoint:** Reviews happen between phases, feedback loops back to coder.
 
 ---
 
-## Phase 12: Web UI (Frontend)
+### Phase 7: Coordinator Agent
+*Goal: Meta-agent orchestrating the workflow*
 
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-083 | Frontend project setup | 🔲 Todo | `web/` |
-| PR-084 | WebSocket client library | 🔲 Todo | `web/src/lib/websocket.ts` |
-| PR-085 | Dashboard page | 🔲 Todo | `web/src/pages/dashboard.tsx` |
-| PR-086 | Issue management page | 🔲 Todo | `web/src/pages/issues.tsx` |
-| PR-087 | Epic/gate approval page | 🔲 Todo | `web/src/pages/epics.tsx` |
-| PR-088 | Agent status page | 🔲 Todo | `web/src/pages/agents.tsx` |
-| PR-089 | Proposal voting page | 🔲 Todo | `web/src/pages/proposals.tsx` |
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-041 | Coordinator agent type | `murmur-core/src/coordinator/mod.rs` |
+| PR-042 | Coordinator prompt | `prompts/coordinator.md` |
+| PR-043 | Agent-to-agent communication | `murmur-core/src/coordinator/comms.rs` |
+| PR-044 | Workflow orchestration loop | `murmur-core/src/coordinator/orchestrate.rs` |
+| PR-045 | Human escalation on max iterations | `murmur-core/src/coordinator/escalate.rs` |
+| PR-046 | CLI: `murmur orchestrate <issue>` | `murmur-cli/src/commands/orchestrate.rs` |
 
----
-
-## Phase 13: Interactive Watch Mode
-
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-090 | PTY-based agent execution | 🔲 Todo | `dispatch-agent/src/pty.rs` |
-| PR-091 | PTY output capture | 🔲 Todo | `pty.rs` |
-| PR-092 | WebSocket terminal streaming | 🔲 Todo | `dispatch-server/src/terminal.rs` |
-| PR-093 | xterm.js integration | 🔲 Todo | `web/src/components/Terminal.tsx` |
-| PR-094 | Bidirectional input | 🔲 Todo | `terminal.rs` |
-| PR-095 | Attach/detach functionality | 🔲 Todo | `dispatch-agent/src/attach.rs` |
+**Checkpoint:** Single command runs full TDD workflow with coordinator managing agents.
 
 ---
 
-## Phase 14: Testing Infrastructure
+### 🎯 BOOTSTRAP MILESTONE
+*Murmuration can now build itself!*
 
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-096 | Unit test setup | 🔲 Todo | All crates |
-| PR-097 | Property tests (proptest) | 🔲 Todo | `tests/proptest_*.rs` |
-| PR-097a | Consensus calculator proptests | 🔲 Todo | `proptest_consensus.rs` |
-| PR-097b | State machine proptests | 🔲 Todo | `proptest_state.rs` |
-| PR-097c | Branch naming proptests | 🔲 Todo | `proptest_branch.rs` |
-| PR-098 | Network mocking (wiremock) | 🔲 Todo | `tests/fixtures/github_mock.rs` |
-| PR-099 | Database integration tests | 🔲 Todo | `dispatch-db/tests/` |
-| PR-100 | End-to-end workflow tests | 🔲 Todo | `tests/e2e/` |
+At this point:
+- `murmur orchestrate 42` runs full TDD workflow on issue #42
+- Coordinator spawns coder, test, reviewer agents as needed
+- Worktrees created from fresh main
+- Red-green validation enforced
+- Reviews gate each phase
 
----
-
-## Phase 15: Polish & Production
-
-| PR | Description | Status | Files |
-|----|-------------|--------|-------|
-| PR-101 | Error recovery improvements | 🔲 Todo | Various |
-| PR-102 | Graceful shutdown | 🔲 Todo | All crates |
-| PR-103 | Metrics collection | 🔲 Todo | `dispatch-core/src/metrics.rs` |
-| PR-104 | User documentation | 🔲 Todo | `docs/` |
-| PR-105 | Installation scripts | 🔲 Todo | `scripts/install.sh` |
-| PR-106 | Release automation | 🔲 Todo | `.github/workflows/release.yml` |
+**Start using Murmuration to build remaining features.**
 
 ---
 
-## Design Documents Index
+## Post-Bootstrap Phases
 
-All detailed design documents in `design/`:
+### Phase 8: GitHub Integration (Write)
+*Goal: Push results back to GitHub*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-041 | Update issue metadata in body | `murmur-github/src/metadata.rs` |
+| PR-042 | Post progress comments | `murmur-github/src/comments.rs` |
+| PR-043 | Create PR on completion | `murmur-github/src/pr.rs` |
+| PR-044 | Link PR to issue | `murmur-github/src/pr.rs` |
+| PR-045 | CLI: `murmur sync` | `murmur-cli/src/commands/sync.rs` |
+
+---
+
+### Phase 9: Persistence (SQLite)
+*Goal: Track state across runs*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-046 | Database schema + migrations | `murmur-db/migrations/` |
+| PR-047 | Issue state persistence | `murmur-db/src/repos/issues.rs` |
+| PR-048 | Agent run history | `murmur-db/src/repos/agents.rs` |
+| PR-049 | Workflow state persistence | `murmur-db/src/repos/workflows.rs` |
+| PR-050 | Resume interrupted workflows | `murmur-core/src/workflow/resume.rs` |
+
+---
+
+### Phase 10: Background Daemon
+*Goal: Run continuously, watch for new issues*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-051 | Daemon mode | `murmur-cli/src/commands/daemon.rs` |
+| PR-052 | Issue polling loop | `murmur-core/src/daemon/poll.rs` |
+| PR-053 | Webhook receiver (optional) | `murmur-server/src/webhook.rs` |
+| PR-054 | Concurrent agent management | `murmur-core/src/daemon/scheduler.rs` |
+| PR-055 | Max concurrent agents config | `murmur-core/src/config.rs` |
+
+---
+
+### Phase 11: Human Override & Control
+*Goal: Pause, resume, redirect agents*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-056 | Pause/resume agents | `murmur-core/src/agent/control.rs` |
+| PR-057 | Cancel workflow | `murmur-core/src/workflow/cancel.rs` |
+| PR-058 | Skip phase (force advance) | `murmur-core/src/workflow/skip.rs` |
+| PR-059 | Inject human feedback | `murmur-core/src/review/human.rs` |
+| PR-060 | CLI: `murmur pause/resume/cancel` | `murmur-cli/src/commands/control.rs` |
+
+---
+
+### Phase 12: Additional Agent Types
+*Goal: More specialized agents*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-061 | Security agent + prompt | `prompts/security.md` |
+| PR-062 | Docs agent + prompt | `prompts/docs.md` |
+| PR-063 | Architect agent + prompt | `prompts/architect.md` |
+| PR-064 | PM agent (issue decomposition) | `prompts/pm.md` |
+| PR-065 | Configurable agent pipelines | `murmur-core/src/workflow/pipeline.rs` |
+
+---
+
+### Phase 13: Epics & Stages
+*Goal: Large features with gates*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-066 | Epic data model | `murmur-core/src/types/epic.rs` |
+| PR-067 | Stage management | `murmur-core/src/epic/stages.rs` |
+| PR-068 | Gate approval workflow | `murmur-core/src/epic/gates.rs` |
+| PR-069 | Issue-to-epic linking | `murmur-db/src/repos/epics.rs` |
+| PR-070 | CLI: `murmur epic` commands | `murmur-cli/src/commands/epic.rs` |
+
+---
+
+### Phase 14: Sangha Governance (Voting)
+*Goal: Democratic agent decision-making*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-071 | Proposal creation | `murmur-core/src/governance/proposal.rs` |
+| PR-072 | Voting mechanism | `murmur-core/src/governance/voting.rs` |
+| PR-073 | Consensus calculation | `murmur-core/src/governance/consensus.rs` |
+| PR-074 | Proposal execution | `murmur-core/src/governance/execute.rs` |
+| PR-075 | Human override (force/veto) | `murmur-core/src/governance/override.rs` |
+
+---
+
+### Phase 15: TUI
+*Goal: Terminal UI for monitoring*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-076 | TUI framework (ratatui) | `murmur-tui/src/` |
+| PR-077 | Dashboard view | `murmur-tui/src/views/dashboard.rs` |
+| PR-078 | Agent status view | `murmur-tui/src/views/agents.rs` |
+| PR-079 | Workflow progress view | `murmur-tui/src/views/workflow.rs` |
+| PR-080 | Log viewer | `murmur-tui/src/views/logs.rs` |
+
+---
+
+### Phase 16: Web UI
+*Goal: Browser-based monitoring and control*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-081 | REST API | `murmur-server/src/api/` |
+| PR-082 | WebSocket events | `murmur-server/src/websocket/` |
+| PR-083 | Frontend setup | `web/` |
+| PR-084 | Dashboard page | `web/src/pages/` |
+| PR-085 | Agent terminal streaming | `web/src/components/Terminal.tsx` |
+
+---
+
+### Phase 17: Polish & Production
+*Goal: Production-ready*
+
+| PR | Description | Files |
+|----|-------------|-------|
+| PR-086 | CI/CD setup | `.github/workflows/` |
+| PR-087 | Property tests (proptest) | `tests/` |
+| PR-088 | Error recovery | Various |
+| PR-089 | Graceful shutdown | Various |
+| PR-090 | Documentation | `docs/` |
+| PR-091 | Installation scripts | `scripts/` |
+
+---
+
+## Issue Dependencies & PR Verification
+
+Murmuration understands issue dependencies and blocks work until prerequisites are met.
+
+### Dependency Syntax (in issue body)
+
+```markdown
+## Dependencies
+- Depends on #12
+- Blocked by #15
+- Parent: #8
+
+## Metadata
+<!-- murmur:metadata
+{
+  "phase": 3,
+  "pr_number": null,
+  "status": "ready"
+}
+-->
+```
+
+### Dependency Resolution Flow
 
 ```
-design/
-├── code-structure.md         # Rust module organization, patterns, types
-├── cli-design.md             # CLI commands, arguments, examples
-├── github-integration.md     # GitHub API, metadata, webhooks, sync
-├── agent-execution.md        # Agent spawning, prompts, lifecycle
-├── sangha-governance.md      # Proposals, voting, coordinator, TDD
-├── tui-design.md             # Terminal UI layouts, views, keys
-├── configuration.md          # Config hierarchy, TOML schema
-├── error-handling.md         # Error types, recovery, logging
-├── testing-strategy.md       # Testing pyramid, proptests, mocking
-└── api/
-    ├── websocket-api.md      # WebSocket events and messages
-    └── rest-api.md           # REST endpoints and schemas
+murmur work 42
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 1. Parse issue #42 dependencies                             │
+│    - Extract "Depends on #X" references                     │
+│    - Extract "Blocked by #X" references                     │
+└─────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 2. For each dependency, check status:                       │
+│    - Is the issue closed?                                   │
+│    - Does it have a linked PR?                              │
+│    - Is that PR merged?                                     │
+└─────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 3. If ALL dependencies satisfied:                           │
+│    → Proceed with work                                      │
+│                                                             │
+│    If ANY dependency NOT satisfied:                         │
+│    → Show blocking issues                                   │
+│    → Optionally: work on unblocked dependency first         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### CLI Output Example
+
+```
+$ murmur work 42
+
+Issue #42: Implement TDD workflow
+Status: ready
+
+Dependencies:
+  ✅ #38 - Agent type definitions [PR #51 merged]
+  ✅ #39 - System prompt loading [PR #52 merged]
+  ❌ #40 - Context building [PR #53 open, not merged]
+
+Blocked by 1 unmerged dependency.
+
+Options:
+  1. Wait for PR #53 to merge
+  2. Run `murmur work 40` to help finish the blocking issue
+  3. Run `murmur work 42 --force` to proceed anyway (not recommended)
+```
+
+### Dependency Graph Visualization
+
+```
+$ murmur plan status
+
+Phase 1: Minimal CLI ━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% [5/5]
+  ✅ #1 Rust workspace
+  ✅ #2 Basic CLI
+  ✅ #3 Agent spawning
+  ✅ #4 Output streaming
+  ✅ #5 Basic config
+
+Phase 2: Git Worktrees ━━━━━━━━━━━━━━━━━━━━━━━━ 60% [3/5]
+  ✅ #6 Git detection
+  ✅ #7 Branching point
+  🔄 #8 Worktree creation ← IN PROGRESS
+  ⏳ #9 Cache management (blocked by #8)
+  ⏳ #10 Clone on demand (blocked by #8)
+
+Phase 3: GitHub Integration ━━━━━━━━━━━━━━━━━━ 0% [0/8]
+  ⏳ #11 API client (blocked by #5)
+  ...
 ```
 
 ---
 
-## Key Architecture Decisions
+## Worktree Intelligence
 
-1. **Rust Workspace**: 7 crates for separation of concerns
-   - `dispatch-core`: Types, errors, business logic
-   - `dispatch-db`: SQLite with sqlx (compile-time checked)
-   - `dispatch-github`: Octocrab for GitHub API
-   - `dispatch-agent`: Claude Code spawning
-   - `dispatch-cli`: Clap-based CLI
-   - `dispatch-tui`: Ratatui terminal UI
-   - `dispatch-server`: Axum HTTP/WebSocket server
+The worktree system must be smart about branching:
 
-2. **GitHub as UI**: Issues are the primary interface, with metadata stored in HTML comments
+```
+Worktree Creation Flow:
+┌─────────────────────────────────────────────────────────────┐
+│ murmur work <issue> --repo <url-or-path>                    │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 1. Is repo already cloned in cache?                         │
+│    ~/.cache/murmur/repos/<owner>/<repo>/                    │
+│    NO → Clone it                                            │
+│    YES → Continue                                           │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Fetch latest from origin                                 │
+│    git fetch origin                                         │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Determine branching point                                │
+│    - Default: origin/main or origin/master                  │
+│    - If issue specifies base branch, use that               │
+│    - If continuing existing work, find merge-base           │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 4. Check worktree cache                                     │
+│    ~/.cache/murmur/worktrees/<repo>/<issue-id>/             │
+│    EXISTS + CLEAN → Reuse, rebase onto new base             │
+│    EXISTS + DIRTY → Warn, ask to stash or new               │
+│    NOT EXISTS → Create new                                  │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 5. Create/update worktree                                   │
+│    git worktree add <path> -b murmur/<issue> <base>         │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 6. Agent works in worktree                                  │
+└─────────────────────────────────────────────────────────────┘
+```
 
-3. **TDD Workflow**: 11-phase red-green-refactor cycle with mandatory test failure verification
+**Cache Structure:**
+```
+~/.cache/murmur/
+├── repos/                    # Cloned repositories
+│   └── <owner>/
+│       └── <repo>/           # Bare or regular clone
+├── worktrees/                # Active worktrees
+│   └── <owner>-<repo>/
+│       └── <issue-id>/       # Worktree for issue
+└── config.toml               # Cache settings
+```
 
-4. **Coordinator Pattern**: Meta-agents orchestrate multi-agent workflows
-
-5. **Sangha Governance**: Democratic voting with human override capability
-
-6. **Property Testing**: Proptest for exhaustive testing of compute functions
-
-7. **Network Mocking**: Wiremock for GitHub API testing
+**Cleanup Policy:**
+- LRU eviction when cache exceeds size limit
+- Completed worktrees retained for N days (configurable)
+- `murmur worktree clean` for manual cleanup
+- `murmur worktree clean --all` to nuke everything
 
 ---
 
-## Progress Summary
+## Crate Structure (Renamed to murmur-*)
 
-| Phase | Items | Complete | Progress |
-|-------|-------|----------|----------|
-| Phase 0: Design | 15 | 15 | 100% |
-| Phase 1: Foundation | ~25 | 0 | 0% |
-| Phase 2: Git/Worktrees | 6 | 0 | 0% |
-| Phase 3: Issues | 6 | 0 | 0% |
-| Phase 4: Epics | 5 | 0 | 0% |
-| Phase 5: Agents | ~15 | 0 | 0% |
-| Phase 6: GitHub | 11 | 0 | 0% |
-| Phase 7: Governance | 9 | 0 | 0% |
-| Phase 8: TDD/Coordinator | ~15 | 0 | 0% |
-| Phase 9: Control | 6 | 0 | 0% |
-| Phase 10: TUI | 11 | 0 | 0% |
-| Phase 11: Web Server | ~12 | 0 | 0% |
-| Phase 12: Web UI | 7 | 0 | 0% |
-| Phase 13: Watch Mode | 6 | 0 | 0% |
-| Phase 14: Testing | ~8 | 0 | 0% |
-| Phase 15: Polish | 6 | 0 | 0% |
+```
+murmuration/
+├── Cargo.toml                 # Workspace
+├── murmur-core/               # Core logic, types, workflows
+├── murmur-cli/                # CLI binary
+├── murmur-github/             # GitHub API integration
+├── murmur-db/                 # SQLite persistence (post-bootstrap)
+├── murmur-server/             # HTTP/WebSocket server (post-bootstrap)
+├── murmur-tui/                # Terminal UI (post-bootstrap)
+├── prompts/                   # Agent system prompts
+│   ├── coder.md
+│   ├── reviewer.md
+│   ├── test.md
+│   └── coordinator.md
+├── web/                       # Web UI (post-bootstrap)
+└── design/                    # Design documents
+```
 
-**Overall: Phase 0 complete, ready for implementation**
+---
+
+## Progress Tracking
+
+| Phase | Description | PRs | Status |
+|-------|-------------|-----|--------|
+| 1 | Minimal CLI + Agent Spawning | PR-001 to PR-005 | 🔲 |
+| 2 | Git Worktrees (Smart) | PR-006 to PR-011 | 🔲 |
+| 3 | GitHub Integration + Dependencies | PR-012 to PR-018 | 🔲 |
+| 3b | Plan Import to GitHub | PR-019 to PR-022 | 🔲 |
+| 4 | Agent Types + Prompts | PR-023 to PR-029 | 🔲 |
+| 5 | TDD Workflow (Red-Green) | PR-030 to PR-034 | 🔲 |
+| 6 | Review Agents at Each Phase | PR-035 to PR-040 | 🔲 |
+| 7 | Coordinator Agent | PR-041 to PR-046 | 🔲 |
+| **🎯** | **BOOTSTRAP MILESTONE** | | 🔲 |
+| 8 | GitHub Integration (Write) | PR-047 to PR-051 | 🔲 |
+| 9 | Persistence (SQLite) | PR-052 to PR-056 | 🔲 |
+| 10 | Background Daemon | PR-057 to PR-061 | 🔲 |
+| 11 | Human Override & Control | PR-062 to PR-066 | 🔲 |
+| 12 | Additional Agent Types | PR-067 to PR-071 | 🔲 |
+| 13 | Epics & Stages | PR-072 to PR-076 | 🔲 |
+| 14 | Sangha Governance | PR-077 to PR-081 | 🔲 |
+| 15 | TUI | PR-082 to PR-086 | 🔲 |
+| 16 | Web UI | PR-087 to PR-091 | 🔲 |
+| 17 | Polish & Production | PR-092 to PR-097 | 🔲 |
+
+**Bootstrap = 8 phases (including 3b), ~46 PRs**
+**Full system = 18 phases, ~97 PRs**
 
 ---
 
 ## Next Steps
 
-1. ~~Complete all design documents~~ ✅
-2. Begin Phase 1: Foundation
-   - Start with PR-001: Initialize Rust workspace
-   - Set up CI/CD pipeline
-   - Implement database schema and migrations
-3. Work through phases sequentially, using TDD approach
-4. Each PR should include tests before implementation
+1. Begin Phase 1: Minimal CLI + Agent Spawning
+2. Get to `murmur run "task"` working
+3. Add worktrees, GitHub, TDD workflow
+4. Reach bootstrap milestone
+5. **Use Murmuration to build the rest of Murmuration**
