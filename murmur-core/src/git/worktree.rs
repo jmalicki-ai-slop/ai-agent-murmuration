@@ -104,6 +104,34 @@ impl GitRepo {
             return Err(Error::Other(format!("git worktree add failed: {}", stderr)));
         }
 
+        // Install pre-commit hooks if .pre-commit-config.yaml exists
+        let precommit_config = worktree_dir.join(".pre-commit-config.yaml");
+        if precommit_config.exists() {
+            tracing::info!("Installing pre-commit hooks in worktree");
+            let precommit_result = Command::new("pre-commit")
+                .arg("install")
+                .arg("--install-hooks")
+                .current_dir(worktree_dir)
+                .output();
+
+            match precommit_result {
+                Ok(output) if output.status.success() => {
+                    tracing::debug!("Pre-commit hooks installed successfully");
+                }
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    tracing::warn!("Failed to install pre-commit hooks: {}", stderr);
+                }
+                Err(e) => {
+                    // pre-commit might not be installed, just warn
+                    tracing::warn!(
+                        "Could not run pre-commit install: {} (is pre-commit installed?)",
+                        e
+                    );
+                }
+            }
+        }
+
         Ok(WorktreeInfo {
             path: worktree_dir.to_path_buf(),
             branch: options.branch_name.clone(),
