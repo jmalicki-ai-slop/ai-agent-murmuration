@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use murmur_core::Config;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use commands::RunArgs;
+use commands::{RunArgs, WorktreeArgs};
 
 /// Murmuration: Multi-agent orchestration for software development
 #[derive(Parser, Debug)]
@@ -39,6 +39,10 @@ enum Commands {
     /// Run a task with Murmuration agents
     #[command(visible_alias = "r")]
     Run(RunArgs),
+
+    /// Manage git worktrees
+    #[command(visible_alias = "wt")]
+    Worktree(WorktreeArgs),
 
     /// Show current configuration
     Config,
@@ -75,6 +79,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::Run(args)) => {
             args.execute(cli.verbose, &config).await?;
+        }
+        Some(Commands::Worktree(args)) => {
+            args.execute(cli.verbose).await?;
         }
         Some(Commands::Config) => {
             println!("Murmur Configuration");
