@@ -13,4 +13,4 @@ pub use agent::{
 };
 pub use config::{AgentConfig, Config};
 pub use error::{Error, Result};
-pub use git::{GitRepo, RemoteInfo};
+pub use git::{BranchingOptions, BranchingPoint, GitRepo, RemoteInfo};
