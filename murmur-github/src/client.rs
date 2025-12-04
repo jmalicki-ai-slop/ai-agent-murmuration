@@ -132,7 +132,10 @@ fn parse_github_url(url: &str) -> Result<(String, String)> {
         // Simple owner/repo format
         let parts: Vec<&str> = url.split('/').collect();
         if parts.len() == 2 {
-            return Ok((parts[0].to_string(), parts[1].trim_end_matches(".git").to_string()));
+            return Ok((
+                parts[0].to_string(),
+                parts[1].trim_end_matches(".git").to_string(),
+            ));
         }
         return Err(Error::Parse(format!(
             "Invalid repository format: {}. Expected owner/repo",

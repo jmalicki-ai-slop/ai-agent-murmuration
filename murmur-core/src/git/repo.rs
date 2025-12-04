@@ -80,7 +80,10 @@ impl GitRepo {
         }
 
         // Fall back to first available remote
-        let remotes = self.repo.remotes().map_err(|e| Error::Other(format!("Failed to list remotes: {}", e)))?;
+        let remotes = self
+            .repo
+            .remotes()
+            .map_err(|e| Error::Other(format!("Failed to list remotes: {}", e)))?;
 
         for remote_name in remotes.iter().flatten() {
             if let Ok(remote) = self.repo.find_remote(remote_name) {
@@ -100,7 +103,10 @@ impl GitRepo {
 
     /// List all remotes
     pub fn list_remotes(&self) -> Result<Vec<RemoteInfo>> {
-        let remotes = self.repo.remotes().map_err(|e| Error::Other(format!("Failed to list remotes: {}", e)))?;
+        let remotes = self
+            .repo
+            .remotes()
+            .map_err(|e| Error::Other(format!("Failed to list remotes: {}", e)))?;
 
         let mut result = Vec::new();
         for remote_name in remotes.iter().flatten() {
@@ -141,7 +147,11 @@ impl GitRepo {
         }
 
         // Check if origin/master exists
-        if self.repo.find_reference("refs/remotes/origin/master").is_ok() {
+        if self
+            .repo
+            .find_reference("refs/remotes/origin/master")
+            .is_ok()
+        {
             return Ok("master".to_string());
         }
 

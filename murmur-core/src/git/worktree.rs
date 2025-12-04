@@ -74,9 +74,8 @@ impl GitRepo {
 
         // Ensure parent directory exists
         if let Some(parent) = worktree_dir.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                Error::Other(format!("Failed to create worktree directory: {}", e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::Other(format!("Failed to create worktree directory: {}", e)))?;
         }
 
         // Use git worktree add command
@@ -90,9 +89,9 @@ impl GitRepo {
             .arg(&branching_point.commit)
             .current_dir(self.root());
 
-        let output = cmd.output().map_err(|e| {
-            Error::Other(format!("Failed to run git worktree: {}", e))
-        })?;
+        let output = cmd
+            .output()
+            .map_err(|e| Error::Other(format!("Failed to run git worktree: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -105,10 +104,7 @@ impl GitRepo {
                 )));
             }
 
-            return Err(Error::Other(format!(
-                "git worktree add failed: {}",
-                stderr
-            )));
+            return Err(Error::Other(format!("git worktree add failed: {}", stderr)));
         }
 
         Ok(WorktreeInfo {

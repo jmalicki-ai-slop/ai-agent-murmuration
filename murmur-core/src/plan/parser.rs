@@ -202,7 +202,10 @@ fn parse_table_row(line: &str, prev_pr_id: &Option<String>) -> Option<PlannedPR>
     let depends_on = if let Some(prev) = prev_pr_id {
         // Sub-PRs depend on their parent, not previous
         if is_sub_pr {
-            parent_pr.as_ref().map(|p| vec![p.clone()]).unwrap_or_default()
+            parent_pr
+                .as_ref()
+                .map(|p| vec![p.clone()])
+                .unwrap_or_default()
         } else {
             vec![prev.clone()]
         }
@@ -294,7 +297,10 @@ Test description.
     #[test]
     fn test_parse_checkpoint() {
         let plan = parse_plan(SAMPLE_PLAN).unwrap();
-        assert_eq!(plan.phases[0].checkpoint, Some("First checkpoint.".to_string()));
+        assert_eq!(
+            plan.phases[0].checkpoint,
+            Some("First checkpoint.".to_string())
+        );
     }
 
     #[test]

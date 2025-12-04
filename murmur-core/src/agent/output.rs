@@ -140,10 +140,7 @@ impl StreamHandler for PrintHandler {
         println!(); // Ensure final newline
         if self.verbose {
             if let Some(c) = cost {
-                eprintln!(
-                    "[tokens: {} in, {} out]",
-                    c.input_tokens, c.output_tokens
-                );
+                eprintln!("[tokens: {} in, {} out]", c.input_tokens, c.output_tokens);
             }
             if let Some(d) = duration_ms {
                 eprintln!("[duration: {}ms]", d);
@@ -202,7 +199,10 @@ impl OutputStreamer {
 
     fn dispatch_message<H: StreamHandler>(handler: &mut H, msg: StreamMessage) {
         match msg {
-            StreamMessage::System { subtype, session_id } => {
+            StreamMessage::System {
+                subtype,
+                session_id,
+            } => {
                 handler.on_system(subtype.as_deref(), session_id.as_deref());
             }
             StreamMessage::Assistant { message } => {
@@ -215,9 +215,7 @@ impl OutputStreamer {
                 handler.on_tool_result(&output, is_error);
             }
             StreamMessage::Result {
-                cost,
-                duration_ms,
-                ..
+                cost, duration_ms, ..
             } => {
                 handler.on_complete(cost.as_ref(), duration_ms);
             }
@@ -259,7 +257,9 @@ mod tests {
         let json = r#"{"type":"result","cost":{"input_tokens":100,"output_tokens":50},"duration_ms":1234}"#;
         let msg: StreamMessage = serde_json::from_str(json).unwrap();
         match msg {
-            StreamMessage::Result { cost, duration_ms, .. } => {
+            StreamMessage::Result {
+                cost, duration_ms, ..
+            } => {
                 let c = cost.unwrap();
                 assert_eq!(c.input_tokens, 100);
                 assert_eq!(c.output_tokens, 50);
@@ -274,7 +274,10 @@ mod tests {
         let json = r#"{"type":"system","subtype":"init","session_id":"abc123"}"#;
         let msg: StreamMessage = serde_json::from_str(json).unwrap();
         match msg {
-            StreamMessage::System { subtype, session_id } => {
+            StreamMessage::System {
+                subtype,
+                session_id,
+            } => {
                 assert_eq!(subtype, Some("init".to_string()));
                 assert_eq!(session_id, Some("abc123".to_string()));
             }

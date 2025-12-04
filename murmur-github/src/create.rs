@@ -34,11 +34,7 @@ pub struct ImportOptions {
 
 impl GitHubClient {
     /// Import a plan to GitHub as issues
-    pub async fn import_plan(
-        &self,
-        plan: &Plan,
-        options: &ImportOptions,
-    ) -> Result<ImportResult> {
+    pub async fn import_plan(&self, plan: &Plan, options: &ImportOptions) -> Result<ImportResult> {
         let mut result = ImportResult::default();
 
         // Get existing issues to check for duplicates
@@ -82,7 +78,9 @@ impl GitHubClient {
                 }
                 Err(e) => {
                     warn!(title = %epic_title, error = %e, "Failed to create epic");
-                    result.errors.push(format!("Failed to create epic '{}': {}", epic_title, e));
+                    result
+                        .errors
+                        .push(format!("Failed to create epic '{}': {}", epic_title, e));
                 }
             }
         }

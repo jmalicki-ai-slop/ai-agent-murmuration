@@ -60,7 +60,11 @@ pub struct WorktreeMetadata {
 
 impl WorktreeMetadata {
     /// Create new metadata for a fresh worktree
-    pub fn new(task_id: impl Into<String>, base_commit: impl Into<String>, branch: impl Into<String>) -> Self {
+    pub fn new(
+        task_id: impl Into<String>,
+        base_commit: impl Into<String>,
+        branch: impl Into<String>,
+    ) -> Self {
         let now = SystemTime::now();
         Self {
             task_id: task_id.into(),
@@ -80,25 +84,21 @@ impl WorktreeMetadata {
     /// Load metadata from a worktree directory
     pub fn load(worktree_path: &Path) -> Result<Self> {
         let meta_path = worktree_path.join(METADATA_FILE);
-        let contents = fs::read_to_string(&meta_path).map_err(|e| {
-            Error::Config(format!("Failed to read worktree metadata: {}", e))
-        })?;
+        let contents = fs::read_to_string(&meta_path)
+            .map_err(|e| Error::Config(format!("Failed to read worktree metadata: {}", e)))?;
 
-        toml::from_str(&contents).map_err(|e| {
-            Error::Config(format!("Failed to parse worktree metadata: {}", e))
-        })
+        toml::from_str(&contents)
+            .map_err(|e| Error::Config(format!("Failed to parse worktree metadata: {}", e)))
     }
 
     /// Save metadata to a worktree directory
     pub fn save(&self, worktree_path: &Path) -> Result<()> {
         let meta_path = worktree_path.join(METADATA_FILE);
-        let contents = toml::to_string_pretty(self).map_err(|e| {
-            Error::Other(format!("Failed to serialize worktree metadata: {}", e))
-        })?;
+        let contents = toml::to_string_pretty(self)
+            .map_err(|e| Error::Other(format!("Failed to serialize worktree metadata: {}", e)))?;
 
-        fs::write(&meta_path, contents).map_err(|e| {
-            Error::Other(format!("Failed to write worktree metadata: {}", e))
-        })
+        fs::write(&meta_path, contents)
+            .map_err(|e| Error::Other(format!("Failed to write worktree metadata: {}", e)))
     }
 }
 
@@ -119,7 +119,7 @@ impl Default for PoolConfig {
     fn default() -> Self {
         Self {
             max_per_repo: 10,
-            max_total_size: 0,      // Unlimited by default
+            max_total_size: 0,           // Unlimited by default
             max_age_secs: 7 * 24 * 3600, // 7 days
         }
     }
@@ -180,12 +180,11 @@ impl WorktreePool {
 
         let mut worktrees = Vec::new();
 
-        for entry in fs::read_dir(&repo_dir).map_err(|e| {
-            Error::Other(format!("Failed to read cache directory: {}", e))
-        })? {
-            let entry = entry.map_err(|e| {
-                Error::Other(format!("Failed to read directory entry: {}", e))
-            })?;
+        for entry in fs::read_dir(&repo_dir)
+            .map_err(|e| Error::Other(format!("Failed to read cache directory: {}", e)))?
+        {
+            let entry = entry
+                .map_err(|e| Error::Other(format!("Failed to read directory entry: {}", e)))?;
 
             let path = entry.path();
             if path.is_dir() {
@@ -290,13 +289,27 @@ impl WorktreePool {
         let remaining = self.list_worktrees(repo_name)?;
         if remaining.len() > self.config.max_per_repo {
             // Sort by last_used (oldest first)
-            let mut sorted: Vec<_> = remaining.into_iter()
-                .filter(|wt| wt.metadata.as_ref().map(|m| m.status != WorktreeStatus::Active).unwrap_or(true))
+            let mut sorted: Vec<_> = remaining
+                .into_iter()
+                .filter(|wt| {
+                    wt.metadata
+                        .as_ref()
+                        .map(|m| m.status != WorktreeStatus::Active)
+                        .unwrap_or(true)
+                })
                 .collect();
 
             sorted.sort_by(|a, b| {
-                let a_time = a.metadata.as_ref().map(|m| m.last_used).unwrap_or(SystemTime::UNIX_EPOCH);
-                let b_time = b.metadata.as_ref().map(|m| m.last_used).unwrap_or(SystemTime::UNIX_EPOCH);
+                let a_time = a
+                    .metadata
+                    .as_ref()
+                    .map(|m| m.last_used)
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
+                let b_time = b
+                    .metadata
+                    .as_ref()
+                    .map(|m| m.last_used)
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
                 a_time.cmp(&b_time)
             });
 

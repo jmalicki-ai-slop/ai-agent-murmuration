@@ -44,8 +44,7 @@ impl WorkArgs {
             )
         })?;
 
-        let client =
-            GitHubClient::from_url(repo_str).map_err(|e| anyhow::anyhow!("{}", e))?;
+        let client = GitHubClient::from_url(repo_str).map_err(|e| anyhow::anyhow!("{}", e))?;
 
         println!(
             "Working on issue #{} in {}/{}",
@@ -115,11 +114,7 @@ impl WorkArgs {
                     println!("Options:");
                     for (i, (num, _, pr)) in blocking.iter().enumerate() {
                         if let Some(pr_num) = pr {
-                            println!(
-                                "  {}. Wait for PR #{} to merge",
-                                i + 1,
-                                pr_num
-                            );
+                            println!("  {}. Wait for PR #{} to merge", i + 1, pr_num);
                         } else {
                             println!(
                                 "  {}. Run `murmur work {}` to start the blocking issue",
@@ -236,16 +231,16 @@ impl WorkArgs {
         if status.success() {
             println!("✅ Agent completed successfully");
         } else {
-            println!(
-                "❌ Agent exited with code: {}",
-                status.code().unwrap_or(-1)
-            );
+            println!("❌ Agent exited with code: {}", status.code().unwrap_or(-1));
         }
 
         println!();
         println!("Next steps:");
         println!("  1. Review changes: cd {}", info.path.display());
-        println!("  2. Create PR: gh pr create --title \"Fixes #{}\"", self.issue);
+        println!(
+            "  2. Create PR: gh pr create --title \"Fixes #{}\"",
+            self.issue
+        );
 
         Ok(())
     }

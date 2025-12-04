@@ -100,7 +100,11 @@ impl AgentSpawner {
     ///
     /// # Returns
     /// An `AgentHandle` that can be used to monitor and control the process
-    pub async fn spawn(&self, prompt: impl Into<String>, workdir: impl AsRef<Path>) -> Result<AgentHandle> {
+    pub async fn spawn(
+        &self,
+        prompt: impl Into<String>,
+        workdir: impl AsRef<Path>,
+    ) -> Result<AgentHandle> {
         let prompt = prompt.into();
         let workdir_path = workdir.as_ref();
         let workdir_str = workdir_path

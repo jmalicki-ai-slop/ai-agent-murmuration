@@ -209,7 +209,10 @@ token = "  ghp_xxxxxxxxxxxx  "
 
         let result = Secrets::load_from_file(&file.path().to_path_buf());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("insecure permissions"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("insecure permissions"));
     }
 
     #[cfg(unix)]

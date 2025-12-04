@@ -75,9 +75,7 @@ impl WorktreeArgs {
                 repo,
                 base,
                 force,
-            } => {
-                create_worktree(task, repo.as_deref(), base.as_deref(), *force, verbose).await
-            }
+            } => create_worktree(task, repo.as_deref(), base.as_deref(), *force, verbose).await,
             WorktreeCommand::List { repo } => list_worktrees(repo.as_deref(), verbose).await,
             WorktreeCommand::Clean {
                 all,
@@ -125,7 +123,11 @@ async fn create_worktree(
     let point = git_repo.find_branching_point(&branching_options)?;
 
     if verbose {
-        println!("Branching from: {} ({})", point.reference, &point.commit[..8]);
+        println!(
+            "Branching from: {} ({})",
+            point.reference,
+            &point.commit[..8]
+        );
     }
 
     // Create branch name
@@ -199,14 +201,14 @@ async fn list_worktrees(repo_filter: Option<&str>, verbose: bool) -> anyhow::Res
                     WorktreeStatus::Abandoned => "abandoned",
                     WorktreeStatus::Available => "available",
                 };
-                println!(
-                    "  {} [{}] - task: {}",
-                    path_name, status, meta.task_id
-                );
+                println!("  {} [{}] - task: {}", path_name, status, meta.task_id);
 
                 if verbose {
                     println!("    Branch: {}", meta.branch);
-                    println!("    Base:   {}", &meta.base_commit[..8.min(meta.base_commit.len())]);
+                    println!(
+                        "    Base:   {}",
+                        &meta.base_commit[..8.min(meta.base_commit.len())]
+                    );
                 }
             } else {
                 println!("  {} [unknown]", path_name);
@@ -321,10 +323,7 @@ async fn show_worktree(
                     println!("Task:       {}", meta.task_id);
                     println!("Branch:     {}", meta.branch);
                     println!("Base:       {}", meta.base_commit);
-                    println!(
-                        "Status:     {:?}",
-                        meta.status
-                    );
+                    println!("Status:     {:?}", meta.status);
 
                     // Check if dirty
                     if let Ok(is_dirty) = pool.is_dirty(&wt.path) {

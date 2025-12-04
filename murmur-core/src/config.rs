@@ -59,7 +59,8 @@ impl Config {
     /// Load configuration from a specific file
     pub fn load_from_file(path: &PathBuf) -> Result<Self> {
         let contents = std::fs::read_to_string(path).map_err(Error::Io)?;
-        toml::from_str(&contents).map_err(|e| Error::Config(format!("Failed to parse config: {}", e)))
+        toml::from_str(&contents)
+            .map_err(|e| Error::Config(format!("Failed to parse config: {}", e)))
     }
 
     /// Get the default config file path
@@ -87,7 +88,11 @@ impl Config {
     }
 
     /// Apply CLI flag overrides
-    pub fn with_cli_overrides(mut self, claude_path: Option<String>, model: Option<String>) -> Self {
+    pub fn with_cli_overrides(
+        mut self,
+        claude_path: Option<String>,
+        model: Option<String>,
+    ) -> Self {
         if let Some(path) = claude_path {
             self.agent.claude_path = path;
         }
@@ -102,10 +107,7 @@ impl Config {
     /// Load configuration with all overrides applied
     ///
     /// Priority: CLI > env > config file > defaults
-    pub fn load_with_overrides(
-        claude_path: Option<String>,
-        model: Option<String>,
-    ) -> Result<Self> {
+    pub fn load_with_overrides(claude_path: Option<String>, model: Option<String>) -> Result<Self> {
         Ok(Self::load()?
             .with_env_overrides()
             .with_cli_overrides(claude_path, model))
@@ -141,7 +143,10 @@ model = "claude-sonnet-4-20250514"
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.agent.claude_path, "/usr/local/bin/claude");
-        assert_eq!(config.agent.model, Some("claude-sonnet-4-20250514".to_string()));
+        assert_eq!(
+            config.agent.model,
+            Some("claude-sonnet-4-20250514".to_string())
+        );
     }
 
     #[test]

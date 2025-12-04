@@ -143,7 +143,10 @@ async fn main() -> anyhow::Result<()> {
             println!();
             println!("Agent Settings:");
             println!("  claude_path: {}", config.agent.claude_path);
-            println!("  model: {}", config.agent.model.as_deref().unwrap_or("(default)"));
+            println!(
+                "  model: {}",
+                config.agent.model.as_deref().unwrap_or("(default)")
+            );
             println!();
             if let Some(path) = Config::default_config_path() {
                 println!("Config file: {}", path.display());
@@ -163,20 +166,18 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Some(Commands::SecretsInit) => {
-            match Secrets::create_template() {
-                Ok(path) => {
-                    println!("Created secrets file: {}", path.display());
-                    println!();
-                    println!("Please edit the file and add your GitHub token.");
-                    println!("Get a token at: https://github.com/settings/tokens");
-                }
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                    std::process::exit(1);
-                }
+        Some(Commands::SecretsInit) => match Secrets::create_template() {
+            Ok(path) => {
+                println!("Created secrets file: {}", path.display());
+                println!();
+                println!("Please edit the file and add your GitHub token.");
+                println!("Get a token at: https://github.com/settings/tokens");
             }
-        }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        },
         None => {
             println!("Murmuration - Multi-agent orchestration for software development");
             println!();
