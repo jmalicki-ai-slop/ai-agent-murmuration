@@ -47,3 +47,11 @@ chrono = { version = "0.4", features = ["serde"] }
 # Internal crates
 murmur-core = { path = "murmur-core" }
 murmur-github = { path = "murmur-github" }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+# Pedantic lints disabled for now - enable gradually
+# pedantic = { level = "warn", priority = -1 }

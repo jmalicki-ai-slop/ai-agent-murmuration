@@ -180,11 +180,8 @@ impl WorkArgs {
         let info = git_repo.create_cached_worktree(&point, &worktree_options)?;
 
         // Save metadata
-        let metadata = WorktreeMetadata::new(
-            format!("issue-{}", self.issue),
-            &point.commit,
-            &branch_name,
-        );
+        let metadata =
+            WorktreeMetadata::new(format!("issue-{}", self.issue), &point.commit, &branch_name);
         metadata.save(&info.path)?;
 
         println!("  Created: {}", info.path.display());
