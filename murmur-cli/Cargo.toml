@@ -1,0 +1,19 @@
+[package]
+name = "murmur-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI for Murmuration multi-agent orchestration"
+
+[[bin]]
+name = "murmur"
+path = "src/main.rs"
+
+[dependencies]
+murmur-core.workspace = true
+tokio.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
