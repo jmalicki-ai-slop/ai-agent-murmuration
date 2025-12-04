@@ -4,6 +4,7 @@ members = [
     "murmur-core",
     "murmur-cli",
     "murmur-github",
+    "murmur-db",
 ]
 
 [workspace.package]
@@ -47,6 +48,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Internal crates
 murmur-core = { path = "murmur-core" }
 murmur-github = { path = "murmur-github" }
+murmur-db = { path = "murmur-db" }
 
 [workspace.lints.rust]
 unsafe_code = "warn"
