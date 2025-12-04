@@ -120,6 +120,7 @@ impl AgentSpawner {
 
         let mut cmd = Command::new(claude_cmd);
         cmd.arg("--print")
+            .arg("--verbose")
             .arg("--output-format")
             .arg("stream-json");
 
