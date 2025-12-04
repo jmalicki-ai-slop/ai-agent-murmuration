@@ -108,4 +108,4 @@ See [PLAN.md](PLAN.md) for the complete roadmap.
 
 ## License
 
-MIT
+AGPL-3.0-or-later - See [LICENSE](LICENSE) for details.
