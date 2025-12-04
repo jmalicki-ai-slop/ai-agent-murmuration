@@ -5,10 +5,42 @@
 mod commands;
 
 use clap::{Parser, Subcommand};
-use murmur_core::Config;
+use murmur_core::{Config, GitRepo};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use commands::{RunArgs, WorktreeArgs};
+use commands::{IssueArgs, RunArgs, WorktreeArgs};
+
+/// Try to detect the GitHub repo from the current directory
+fn detect_repo() -> Option<String> {
+    let cwd = std::env::current_dir().ok()?;
+    let git_repo = GitRepo::open(&cwd).ok()?;
+    let remote = git_repo.default_remote().ok()?;
+
+    // Parse owner/repo from remote URL
+    let url = &remote.url;
+    if let Some(owner_repo) = parse_github_url(url) {
+        return Some(owner_repo);
+    }
+
+    None
+}
+
+fn parse_github_url(url: &str) -> Option<String> {
+    // Handle SSH: git@github.com:owner/repo.git
+    if url.starts_with("git@github.com:") {
+        let path = url.strip_prefix("git@github.com:")?;
+        let path = path.strip_suffix(".git").unwrap_or(path);
+        return Some(path.to_string());
+    }
+
+    // Handle HTTPS: https://github.com/owner/repo.git
+    if let Some(path) = url.strip_prefix("https://github.com/") {
+        let path = path.strip_suffix(".git").unwrap_or(path);
+        return Some(path.to_string());
+    }
+
+    None
+}
 
 /// Murmuration: Multi-agent orchestration for software development
 #[derive(Parser, Debug)]
@@ -43,6 +75,10 @@ enum Commands {
     /// Manage git worktrees
     #[command(visible_alias = "wt")]
     Worktree(WorktreeArgs),
+
+    /// Manage GitHub issues
+    #[command(visible_alias = "i")]
+    Issue(IssueArgs),
 
     /// Show current configuration
     Config,
@@ -82,6 +118,11 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::Worktree(args)) => {
             args.execute(cli.verbose).await?;
+        }
+        Some(Commands::Issue(args)) => {
+            // Try to detect repo from current directory
+            let repo = detect_repo();
+            args.execute(cli.verbose, repo.as_deref()).await?;
         }
         Some(Commands::Config) => {
             println!("Murmur Configuration");
