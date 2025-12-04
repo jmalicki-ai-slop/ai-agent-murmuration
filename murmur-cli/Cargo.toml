@@ -11,8 +11,9 @@ name = "murmur"
 path = "src/main.rs"
 
 [dependencies]
-murmur-core.workspace = true
+murmur-core = { workspace = true, features = ["database"] }
 murmur-github.workspace = true
+murmur-db.workspace = true
 tokio.workspace = true
 clap.workspace = true
 anyhow.workspace = true

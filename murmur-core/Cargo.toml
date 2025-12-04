@@ -18,6 +18,13 @@ url.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+# Optional database support
+murmur-db = { workspace = true, optional = true }
+
+[features]
+default = []
+database = ["murmur-db"]
+
 [dev-dependencies]
 tempfile = "3.15"
 

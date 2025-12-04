@@ -2,7 +2,7 @@
 
 use clap::Args;
 use murmur_core::{
-    AgentSpawner, BranchingOptions, Config, GitRepo, OutputStreamer, PrintHandler,
+    AgentSpawner, BranchingOptions, Config, GitRepo, OutputStreamer, PrintHandler, ResumeManager,
     WorktreeMetadata, WorktreeOptions,
 };
 use murmur_github::{DependencyStatus, GitHubClient, IssueDependencies, IssueState};
@@ -28,6 +28,10 @@ pub struct WorkArgs {
     /// Don't start the agent, just create the worktree
     #[arg(long)]
     pub no_agent: bool,
+
+    /// Resume an interrupted workflow for this issue
+    #[arg(long)]
+    pub resume: bool,
 }
 
 impl WorkArgs {
@@ -53,6 +57,11 @@ impl WorkArgs {
             client.repo()
         );
         println!();
+
+        // Check for interrupted workflow if --resume is specified
+        if self.resume {
+            return self.execute_resume(verbose, config, &client).await;
+        }
 
         // Fetch the issue
         let issue = client.get_issue(self.issue).await?;
@@ -237,6 +246,86 @@ impl WorkArgs {
         println!(
             "  2. Create PR: gh pr create --title \"Fixes #{}\"",
             self.issue
+        );
+
+        Ok(())
+    }
+
+    /// Execute resume workflow
+    async fn execute_resume(
+        &self,
+        verbose: bool,
+        config: &Config,
+        client: &GitHubClient,
+    ) -> anyhow::Result<()> {
+        println!("Checking for interrupted workflow...");
+        println!();
+
+        let resume_mgr = ResumeManager::new()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to initialize resume manager: {}", e))?;
+
+        let task_id = format!("issue-{}", self.issue);
+        let resume_info = resume_mgr
+            .find_interrupted_for_task(&task_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to check for interrupted runs: {}", e))?;
+
+        let resume_info = match resume_info {
+            Some(info) => info,
+            None => {
+                println!("❌ No interrupted workflow found for issue #{}.", self.issue);
+                println!();
+                println!("Run without --resume to start a new workflow.");
+                return Ok(());
+            }
+        };
+
+        println!("✅ Found interrupted workflow:");
+        println!("  Run ID:       {}", resume_info.run_id);
+        println!("  Agent Type:   {}", resume_info.agent_type);
+        println!("  Worktree:     {}", resume_info.worktree_path);
+        println!("  Messages:     {}", resume_info.message_count);
+        println!();
+
+        if !resume_info.worktree_exists() {
+            println!(
+                "⚠️  Worktree no longer exists: {}",
+                resume_info.worktree_path
+            );
+            println!();
+            println!("Cannot resume - worktree has been removed.");
+            return Ok(());
+        }
+
+        // Fetch conversation history
+        let conversation = resume_mgr
+            .get_conversation_history(resume_info.run_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch conversation history: {}", e))?;
+
+        if verbose {
+            println!("Conversation history:");
+            for log in &conversation {
+                println!(
+                    "  [{}] {}: {} chars",
+                    log.sequence,
+                    log.message_type,
+                    log.content.len()
+                );
+            }
+            println!();
+        }
+
+        println!(
+            "⚠️  Resume functionality is not yet fully implemented in the agent spawner."
+        );
+        println!("   This feature requires passing conversation history to Claude Code,");
+        println!("   which is planned for a future update.");
+        println!();
+        println!("Worktree location: {}", resume_info.worktree_path);
+        println!(
+            "You can manually continue work in the worktree or start a new workflow."
         );
 
         Ok(())
