@@ -55,18 +55,10 @@ impl AgentHandle {
 }
 
 /// Spawner for Claude Code agent processes
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AgentSpawner {
     /// Agent configuration
     config: AgentConfig,
-}
-
-impl Default for AgentSpawner {
-    fn default() -> Self {
-        Self {
-            config: AgentConfig::default(),
-        }
-    }
 }
 
 impl AgentSpawner {

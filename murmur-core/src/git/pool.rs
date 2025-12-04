@@ -250,19 +250,10 @@ impl WorktreePool {
         for wt in worktrees {
             let should_remove = if let Some(ref meta) = wt.metadata {
                 // Check if too old
-                if self.config.max_age_secs > 0 {
-                    if let Ok(age) = now.duration_since(meta.last_used) {
-                        if age > max_age && meta.status != WorktreeStatus::Active {
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+                self.config.max_age_secs > 0
+                    && now
+                        .duration_since(meta.last_used)
+                        .is_ok_and(|age| age > max_age && meta.status != WorktreeStatus::Active)
             } else {
                 // No metadata, consider for removal if old
                 if let Ok(modified) = fs::metadata(&wt.path).and_then(|m| m.modified()) {

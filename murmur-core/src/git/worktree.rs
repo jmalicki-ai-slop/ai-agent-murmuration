@@ -40,10 +40,7 @@ pub fn default_cache_dir() -> Result<PathBuf> {
 /// Generate a worktree path from repo info and branch name
 pub fn worktree_path(cache_dir: &Path, repo_name: &str, branch_name: &str) -> PathBuf {
     // Sanitize branch name for filesystem
-    let safe_branch = branch_name
-        .replace('/', "-")
-        .replace('\\', "-")
-        .replace(':', "-");
+    let safe_branch = branch_name.replace(['/', '\\', ':'], "-");
 
     cache_dir.join(repo_name).join(safe_branch)
 }

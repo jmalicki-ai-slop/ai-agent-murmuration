@@ -1,5 +1,9 @@
 //! GitHub API client using octocrab
 
+// Allow large error types from octocrab - they're external and would require
+// boxing the error everywhere, which adds complexity without significant benefit
+#![allow(clippy::result_large_err)]
+
 use crate::{Error, Result};
 use murmur_core::Secrets;
 use octocrab::Octocrab;

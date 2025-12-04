@@ -181,7 +181,7 @@ impl WorkArgs {
 
         // Save metadata
         let metadata = WorktreeMetadata::new(
-            &format!("issue-{}", self.issue),
+            format!("issue-{}", self.issue),
             &point.commit,
             &branch_name,
         );

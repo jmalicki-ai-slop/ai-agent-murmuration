@@ -1,0 +1,6 @@
+task_id = "issue-83"
+created_at = "2025-12-04T20:04:06.035663065Z"
+last_used = "2025-12-04T20:04:06.035663065Z"
+base_commit = "9c1ba9d027569f3d3eba5761ccc2526e56ecc824"
+status = "active"
+branch = "murmur/issue-83"
