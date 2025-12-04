@@ -14,7 +14,8 @@ pub use agent::{
 pub use config::{AgentConfig, Config};
 pub use error::{Error, Result};
 pub use git::{
-    default_cache_dir, worktree_path, BranchingOptions, BranchingPoint, CachedWorktree, GitRepo,
-    PoolConfig, RemoteInfo, WorktreeInfo, WorktreeMetadata, WorktreeOptions, WorktreePool,
+    cached_repo_path, clone_repo, default_cache_dir, default_repos_cache_dir, fetch_repo,
+    is_repo_cached, worktree_path, BranchingOptions, BranchingPoint, CachedWorktree, GitRepo,
+    PoolConfig, RemoteInfo, RepoUrl, WorktreeInfo, WorktreeMetadata, WorktreeOptions, WorktreePool,
     WorktreeStatus,
 };
