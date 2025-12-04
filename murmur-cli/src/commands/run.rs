@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use clap::Args;
-use murmur_core::{AgentSpawner, OutputStreamer, PrintHandler};
+use murmur_core::{AgentSpawner, Config, OutputStreamer, PrintHandler};
 
 /// Arguments for the run command
 #[derive(Args, Debug)]
@@ -27,7 +27,7 @@ pub struct RunArgs {
 
 impl RunArgs {
     /// Execute the run command
-    pub async fn execute(&self, verbose: bool) -> anyhow::Result<()> {
+    pub async fn execute(&self, verbose: bool, config: &Config) -> anyhow::Result<()> {
         // Resolve to absolute path
         let workdir = if self.workdir.is_absolute() {
             self.workdir.clone()
@@ -40,6 +40,8 @@ impl RunArgs {
                 prompt = %self.prompt,
                 workdir = %workdir.display(),
                 agents = %self.agents,
+                claude_path = %config.agent.claude_path,
+                model = ?config.agent.model,
                 "Starting murmur run"
             );
         }
@@ -50,15 +52,19 @@ impl RunArgs {
         println!("Prompt: {}", self.prompt);
         println!("Working directory: {}", workdir.display());
         println!("Agents: {}", self.agents);
+        if let Some(ref model) = config.agent.model {
+            println!("Model: {}", model);
+        }
         println!();
 
         if self.dry_run {
             println!("[Dry run] Would spawn {} agent(s) with the above configuration", self.agents);
+            println!("[Dry run] Claude path: {}", config.agent.claude_path);
             return Ok(());
         }
 
-        // For now, spawn a single agent (multi-agent orchestration comes later)
-        let spawner = AgentSpawner::new();
+        // Create spawner from config
+        let spawner = AgentSpawner::from_config(config.agent.clone());
 
         println!("Spawning Claude Code agent...");
         let mut handle = spawner.spawn(&self.prompt, &workdir).await?;
