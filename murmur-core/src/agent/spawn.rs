@@ -126,7 +126,8 @@ impl AgentSpawner {
         cmd.arg("--print")
             .arg("--verbose")
             .arg("--output-format")
-            .arg("stream-json");
+            .arg("stream-json")
+            .arg("--dangerously-skip-permissions");
 
         // Add model flag if specified
         if let Some(ref model) = self.config.model {
