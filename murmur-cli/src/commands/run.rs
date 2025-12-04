@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use clap::Args;
-use murmur_core::AgentSpawner;
+use murmur_core::{AgentSpawner, OutputStreamer, PrintHandler};
 
 /// Arguments for the run command
 #[derive(Args, Debug)]
@@ -63,13 +63,25 @@ impl RunArgs {
         println!("Spawning Claude Code agent...");
         let mut handle = spawner.spawn(&self.prompt, &workdir).await?;
 
-        println!("Agent started, waiting for completion...");
-        println!("(Output streaming will be implemented in PR-004)");
+        // Get stdout for streaming
+        let stdout = handle
+            .child_mut()
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to capture agent stdout"))?;
+
+        println!("Agent started, streaming output...");
         println!();
+
+        // Stream the output
+        let mut streamer = OutputStreamer::new(stdout);
+        let mut handler = PrintHandler::new(verbose);
+        streamer.stream(&mut handler).await?;
 
         // Wait for the process to complete
         let status = handle.wait().await?;
 
+        println!();
         if status.success() {
             println!("Agent completed successfully");
         } else {
