@@ -5,6 +5,7 @@ use murmur_core::{
     BranchingOptions, GitRepo, PoolConfig, RepoUrl, WorktreeMetadata, WorktreeOptions,
     WorktreePool, WorktreeStatus,
 };
+use murmur_db::{repos::WorktreeRepository, Database};
 
 /// Worktree management commands
 #[derive(Args, Debug)]
@@ -53,6 +54,14 @@ pub enum WorktreeCommand {
         /// Repository name filter
         #[arg(short, long)]
         repo: Option<String>,
+
+        /// Also delete associated git branches
+        #[arg(long)]
+        delete_branches: bool,
+
+        /// Only clean stale worktrees (exist in DB but not on disk, or no active agent)
+        #[arg(long)]
+        stale_only: bool,
     },
 
     /// Show worktree details
@@ -81,7 +90,19 @@ impl WorktreeArgs {
                 all,
                 older_than,
                 repo,
-            } => clean_worktrees(*all, *older_than, repo.as_deref(), verbose).await,
+                delete_branches,
+                stale_only,
+            } => {
+                clean_worktrees(
+                    *all,
+                    *older_than,
+                    repo.as_deref(),
+                    *delete_branches,
+                    *stale_only,
+                    verbose,
+                )
+                .await
+            }
             WorktreeCommand::Show { task, repo } => {
                 show_worktree(task, repo.as_deref(), verbose).await
             }
@@ -228,8 +249,97 @@ async fn clean_worktrees(
     all: bool,
     older_than: Option<u64>,
     repo_filter: Option<&str>,
+    delete_branches: bool,
+    stale_only: bool,
     verbose: bool,
 ) -> anyhow::Result<()> {
+    let db = Database::open().map_err(|e| anyhow::anyhow!("Failed to open database: {}", e))?;
+    let worktree_repo = WorktreeRepository::new(&db);
+
+    let mut total_removed = 0;
+    let mut total_branches_deleted = 0;
+
+    if stale_only {
+        // Clean stale worktrees from database
+        println!("Cleaning stale worktrees...");
+        println!();
+
+        let stale = worktree_repo
+            .find_stale()
+            .map_err(|e| anyhow::anyhow!("Failed to query stale worktrees: {}", e))?;
+
+        for wt_record in &stale {
+            let path = std::path::PathBuf::from(&wt_record.path);
+
+            if verbose {
+                println!(
+                    "  Stale worktree: {} (branch: {})",
+                    path.display(),
+                    wt_record.branch_name
+                );
+            }
+
+            // Try to remove worktree directory if it still exists
+            if path.exists() {
+                if let Err(e) = std::fs::remove_dir_all(&path) {
+                    eprintln!("    Warning: Failed to remove directory: {}", e);
+                } else if verbose {
+                    println!("    Removed directory");
+                }
+                total_removed += 1;
+            }
+
+            // Delete branch if requested
+            if delete_branches {
+                // Try to use stored main_repo_path, otherwise fall back to ancestor search
+                let repo_result = if let Some(ref main_path) = wt_record.main_repo_path {
+                    GitRepo::open(main_path)
+                } else {
+                    // Fallback: try to find the git repo root by checking ancestors
+                    path.ancestors()
+                        .skip(1)
+                        .find_map(|ancestor| GitRepo::open(ancestor).ok())
+                        .ok_or_else(|| {
+                            murmur_core::Error::Config("Could not find main repository".to_string())
+                        })
+                };
+
+                if let Ok(repo) = repo_result {
+                    match repo.delete_branch(&wt_record.branch_name) {
+                        Ok(_) => {
+                            if verbose {
+                                println!("    Deleted branch: {}", wt_record.branch_name);
+                            }
+                            total_branches_deleted += 1;
+                        }
+                        Err(e) => {
+                            if verbose {
+                                eprintln!("    Warning: Failed to delete branch: {}", e);
+                            }
+                        }
+                    }
+                } else if verbose {
+                    eprintln!("    Warning: Could not find main repository for branch deletion");
+                }
+            }
+
+            // Remove from database
+            if let Err(e) = worktree_repo.delete_by_path(&wt_record.path) {
+                eprintln!("    Warning: Failed to remove from database: {}", e);
+            } else if verbose {
+                println!("    Removed from database");
+            }
+        }
+
+        println!();
+        println!("Cleaned {} stale worktree(s).", stale.len());
+        if delete_branches {
+            println!("Deleted {} branch(es).", total_branches_deleted);
+        }
+        return Ok(());
+    }
+
+    // Regular cleanup (filesystem-based with optional DB tracking)
     let mut config = PoolConfig::default();
 
     if all {
@@ -247,8 +357,6 @@ async fn clean_worktrees(
         println!("No worktrees to clean.");
         return Ok(());
     }
-
-    let mut total_removed = 0;
 
     for entry in std::fs::read_dir(cache_dir)? {
         let entry = entry?;
@@ -269,15 +377,84 @@ async fn clean_worktrees(
         if !removed.is_empty() {
             if verbose {
                 println!("Cleaned from {}:", repo_name);
-                for path in &removed {
+            }
+
+            for path in &removed {
+                if verbose {
                     println!("  - {}", path.display());
                 }
+
+                // Try to find and delete branch if requested
+                if delete_branches {
+                    // Load metadata to get branch name
+                    if let Ok(meta) = WorktreeMetadata::load(path) {
+                        // Try to find the main repository path from the database record
+                        let repo_result = if let Ok(Some(wt_rec)) =
+                            worktree_repo.find_by_path(&path.to_string_lossy())
+                        {
+                            if let Some(ref main_path) = wt_rec.main_repo_path {
+                                GitRepo::open(main_path)
+                            } else {
+                                // Fallback: try to find git repo by checking ancestors
+                                path.ancestors()
+                                    .skip(1)
+                                    .find_map(|ancestor| GitRepo::open(ancestor).ok())
+                                    .ok_or_else(|| {
+                                        murmur_core::Error::Config(
+                                            "Could not find main repository".to_string(),
+                                        )
+                                    })
+                            }
+                        } else {
+                            // No DB record, try ancestor search
+                            path.ancestors()
+                                .skip(1)
+                                .find_map(|ancestor| GitRepo::open(ancestor).ok())
+                                .ok_or_else(|| {
+                                    murmur_core::Error::Config(
+                                        "Could not find main repository".to_string(),
+                                    )
+                                })
+                        };
+
+                        if let Ok(repo) = repo_result {
+                            match repo.delete_branch(&meta.branch) {
+                                Ok(_) => {
+                                    if verbose {
+                                        println!("    Deleted branch: {}", meta.branch);
+                                    }
+                                    total_branches_deleted += 1;
+                                }
+                                Err(e) => {
+                                    if verbose {
+                                        eprintln!("    Warning: Failed to delete branch: {}", e);
+                                    }
+                                }
+                            }
+                        } else if verbose {
+                            eprintln!(
+                                "    Warning: Could not find main repository for branch deletion"
+                            );
+                        }
+                    }
+                }
+
+                // Remove from database if tracked
+                if let Err(e) = worktree_repo.delete_by_path(&path.to_string_lossy()) {
+                    if verbose {
+                        eprintln!("    Warning: Failed to remove from database: {}", e);
+                    }
+                }
             }
+
             total_removed += removed.len();
         }
     }
 
     println!("Cleaned {} worktree(s).", total_removed);
+    if delete_branches {
+        println!("Deleted {} branch(es).", total_branches_deleted);
+    }
 
     Ok(())
 }

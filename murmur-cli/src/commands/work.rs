@@ -6,8 +6,8 @@ use murmur_core::{
     WorktreeOptions,
 };
 use murmur_db::{
-    models::{AgentRun, ConversationLog},
-    repos::{AgentRunRepository, ConversationRepository},
+    models::{AgentRun, ConversationLog, WorktreeRecord},
+    repos::{AgentRunRepository, ConversationRepository, WorktreeRepository},
     Database,
 };
 use murmur_github::{DependencyStatus, GitHubClient, IssueDependencies, IssueState};
@@ -245,6 +245,52 @@ impl WorkArgs {
             }
         }
 
+        // Check for existing worktree in database
+        let worktree_repo = WorktreeRepository::new(&db);
+        let branch_name = format!("murmur/issue-{}", self.issue);
+
+        if let Ok(Some(existing)) = worktree_repo.find_by_branch(&branch_name) {
+            let path = std::path::PathBuf::from(&existing.path);
+            let exists_on_disk = path.exists();
+
+            if existing.is_active() && exists_on_disk {
+                println!("⚠️  Worktree already exists and is active:");
+                println!("  Path:   {}", existing.path);
+                println!("  Branch: {}", existing.branch_name);
+                println!();
+
+                if !self.force {
+                    println!("The worktree appears to be in use.");
+                    println!("Options:");
+                    println!("  1. Use --force to recreate it");
+                    println!(
+                        "  2. Use 'murmur worktree clean --stale-only' to clean up stale worktrees"
+                    );
+                    return Ok(());
+                } else {
+                    println!("Force flag detected. Removing existing worktree...");
+                    // Delete the old database record
+                    if let Err(e) = worktree_repo.delete_by_path(&existing.path) {
+                        eprintln!("Warning: Failed to remove old worktree record: {}", e);
+                    }
+                    // Worktree directory and branch will be cleaned up by create_worktree logic
+                }
+            } else if !exists_on_disk {
+                println!("⚠️  Found stale worktree entry in database:");
+                println!("  Path:   {} (missing)", existing.path);
+                println!("  Branch: {}", existing.branch_name);
+                println!();
+                println!("Cleaning up stale entry...");
+
+                // Mark as stale and continue
+                let mut stale_record = existing.clone();
+                stale_record.mark_stale();
+                if let Err(e) = worktree_repo.update(&stale_record) {
+                    eprintln!("Warning: Failed to update stale record: {}", e);
+                }
+            }
+        }
+
         // Create worktree for the issue
         println!("Creating worktree for #{}...", self.issue);
 
@@ -258,7 +304,6 @@ impl WorkArgs {
         };
 
         let point = git_repo.find_branching_point(&branching_options)?;
-        let branch_name = format!("murmur/issue-{}", self.issue);
 
         if verbose {
             println!(
@@ -283,6 +328,22 @@ impl WorkArgs {
         println!("  Created: {}", info.path.display());
         println!("  Branch:  {}", info.branch);
         println!();
+
+        // Track worktree in database immediately after creation to avoid race conditions
+        // This is especially important when using --force, where the old record was deleted earlier
+        let worktree_record =
+            WorktreeRecord::new(info.path.to_string_lossy().to_string(), branch_name.clone())
+                .with_issue_number(self.issue as i64)
+                .with_main_repo_path(git_repo.root().to_string_lossy().to_string());
+
+        let worktree_repo = WorktreeRepository::new(&db);
+        let worktree_id = worktree_repo
+            .insert(&worktree_record)
+            .map_err(|e| anyhow::anyhow!("Failed to track worktree in database: {}", e))?;
+
+        if verbose {
+            println!("Worktree ID: {}", worktree_id);
+        }
 
         if self.no_agent {
             println!("Worktree ready. Run your agent manually:");
@@ -322,6 +383,18 @@ impl WorkArgs {
             println!("Agent run ID: {}", run_id);
         }
 
+        // Update worktree record with agent run linkage
+        let worktree_repo = WorktreeRepository::new(&db);
+        if let Ok(Some(mut wt_record)) = worktree_repo.find_by_path(&info.path.to_string_lossy()) {
+            wt_record.agent_run_id = Some(run_id);
+            if let Err(e) = worktree_repo.update(&wt_record) {
+                eprintln!(
+                    "Warning: Failed to update worktree with agent run ID: {}",
+                    e
+                );
+            }
+        }
+
         // Spawn agent with GitHub token if available
         let mut spawner = AgentSpawner::from_config(config.agent.clone());
 
@@ -358,6 +431,18 @@ impl WorkArgs {
         agent_run.complete(status.code().unwrap_or(-1));
         if let Err(e) = agent_repo.update(&agent_run) {
             eprintln!("Warning: Failed to update agent run record: {}", e);
+        }
+
+        // Update worktree status based on agent exit code
+        if let Ok(Some(mut wt_record)) = worktree_repo.find_by_path(&info.path.to_string_lossy()) {
+            if status.success() {
+                wt_record.mark_completed();
+            } else {
+                wt_record.mark_abandoned();
+            }
+            if let Err(e) = worktree_repo.update(&wt_record) {
+                eprintln!("Warning: Failed to update worktree status: {}", e);
+            }
         }
 
         println!();

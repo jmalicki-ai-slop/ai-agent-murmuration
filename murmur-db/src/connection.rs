@@ -129,6 +129,60 @@ impl Database {
             [],
         )?;
 
+        // Create worktrees table
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS worktrees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                branch_name TEXT NOT NULL,
+                issue_number INTEGER,
+                agent_run_id INTEGER,
+                main_repo_path TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id) ON DELETE SET NULL
+            )",
+            [],
+        )?;
+
+        // Create indexes for worktrees
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_worktrees_branch
+             ON worktrees(branch_name)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_worktrees_issue
+             ON worktrees(issue_number)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_worktrees_status
+             ON worktrees(status)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_worktrees_agent_run
+             ON worktrees(agent_run_id)",
+            [],
+        )?;
+
+        // Migrate existing worktrees table to add main_repo_path column if it doesn't exist
+        let has_main_repo_path = self.conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('worktrees') WHERE name='main_repo_path'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )?;
+
+        if has_main_repo_path == 0 {
+            self.conn
+                .execute("ALTER TABLE worktrees ADD COLUMN main_repo_path TEXT", [])?;
+        }
+
         Ok(())
     }
 
