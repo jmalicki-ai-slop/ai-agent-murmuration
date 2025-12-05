@@ -67,8 +67,8 @@ impl WorkArgs {
         // Initialize database
         let db = Database::open().map_err(|e| anyhow::anyhow!("Failed to open database: {}", e))?;
 
-        // Fetch the issue
-        let issue = client.get_issue(self.issue).await?;
+        // Fetch the issue with tracking information
+        let issue = client.get_issue_with_tracking(self.issue).await?;
 
         println!("#{}: {}", issue.number, issue.title);
         println!();
@@ -146,7 +146,8 @@ impl WorkArgs {
 
         // Check dependencies unless --force
         if !self.force {
-            let deps = match IssueDependencies::parse(&issue.body) {
+            // Use native GitHub tracking with markdown fallback
+            let deps = match IssueDependencies::from_issue(&issue) {
                 Ok(deps) => deps,
                 Err(murmur_github::Error::InvalidDependencyRefs(refs)) => {
                     println!(

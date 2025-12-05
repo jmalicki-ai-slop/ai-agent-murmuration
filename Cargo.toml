@@ -44,6 +44,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # GitHub API
 octocrab = "0.41"
 chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 # Internal crates
 murmur-core = { path = "murmur-core" }
