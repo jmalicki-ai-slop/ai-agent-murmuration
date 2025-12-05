@@ -14,9 +14,12 @@ When creating a fine-grained personal access token at https://github.com/setting
 
    | Permission | Access Level | Used For |
    |------------|--------------|----------|
+   | **Contents** | Read and write | Push branches to remote |
    | **Issues** | Read and write | List issues, read issue bodies, create issues from PLAN.md |
-   | **Pull requests** | Read | Check PR merge status for dependency resolution |
+   | **Pull requests** | Read and write | Check PR merge status, **create PRs automatically** |
    | **Metadata** | Read | Repository info (automatically included) |
+
+   > **Note**: The "Pull requests: Read and write" permission is required for the auto-PR feature (`murmur work` will automatically create PRs after agent completion). Without write access, PRs must be created manually.
 
 ### For Classic PAT
 
