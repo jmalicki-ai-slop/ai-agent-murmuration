@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use murmur_core::{Config, GitRepo, Secrets};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use commands::{IssueArgs, RunArgs, WorkArgs, WorktreeArgs};
+use commands::{IssueArgs, RunArgs, StatusArgs, WorkArgs, WorktreeArgs};
 
 /// Try to detect the GitHub repo from the current directory
 fn detect_repo() -> Option<String> {
@@ -59,6 +59,10 @@ struct Cli {
     #[arg(long, global = true, env = "MURMUR_MODEL")]
     model: Option<String>,
 
+    /// Disable emoji output (use ASCII alternatives)
+    #[arg(long, global = true)]
+    no_emoji: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -83,6 +87,10 @@ enum Commands {
     /// Work on a GitHub issue
     #[command(visible_alias = "w")]
     Work(WorkArgs),
+
+    /// Show status of running agents and worktrees
+    #[command(visible_alias = "s")]
+    Status(StatusArgs),
 
     /// Show current configuration
     Config,
@@ -130,12 +138,17 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Issue(args)) => {
             // Try to detect repo from current directory
             let repo = detect_repo();
-            args.execute(cli.verbose, repo.as_deref()).await?;
+            args.execute(cli.verbose, cli.no_emoji, repo.as_deref())
+                .await?;
         }
         Some(Commands::Work(args)) => {
             // Try to detect repo from current directory
             let repo = detect_repo();
-            args.execute(cli.verbose, &config, repo.as_deref()).await?;
+            args.execute(cli.verbose, cli.no_emoji, &config, repo.as_deref())
+                .await?;
+        }
+        Some(Commands::Status(args)) => {
+            args.execute(cli.verbose, cli.no_emoji).await?;
         }
         Some(Commands::Config) => {
             println!("Murmur Configuration");

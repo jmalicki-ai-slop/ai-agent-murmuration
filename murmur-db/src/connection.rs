@@ -66,6 +66,7 @@ impl Database {
                 prompt TEXT NOT NULL,
                 workdir TEXT NOT NULL,
                 config_json TEXT NOT NULL,
+                pid INTEGER,
                 start_time TEXT NOT NULL,
                 end_time TEXT,
                 exit_code INTEGER,
@@ -74,6 +75,11 @@ impl Database {
             )",
             [],
         )?;
+
+        // Add PID column if it doesn't exist (for existing databases)
+        self.conn
+            .execute("ALTER TABLE agent_runs ADD COLUMN pid INTEGER", [])
+            .ok(); // Ignore error if column already exists
 
         // Create indexes for common queries
         self.conn.execute(

@@ -38,6 +38,11 @@ impl AgentHandle {
         &self.workdir
     }
 
+    /// Get the process ID if available
+    pub fn pid(&self) -> Option<u32> {
+        self.child.id()
+    }
+
     /// Get mutable access to the child process for output streaming
     pub fn child_mut(&mut self) -> &mut Child {
         &mut self.child

@@ -23,15 +23,16 @@ impl<'db> AgentRunRepository<'db> {
 
         conn.execute(
             "INSERT INTO agent_runs (
-                agent_type, issue_number, prompt, workdir, config_json,
+                agent_type, issue_number, prompt, workdir, config_json, pid,
                 start_time, end_time, exit_code, duration_seconds, created_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 run.agent_type,
                 run.issue_number,
                 run.prompt,
                 run.workdir,
                 run.config_json,
+                run.pid,
                 run.start_time.to_rfc3339(),
                 run.end_time.map(|dt| dt.to_rfc3339()),
                 run.exit_code,
@@ -57,17 +58,19 @@ impl<'db> AgentRunRepository<'db> {
                 prompt = ?3,
                 workdir = ?4,
                 config_json = ?5,
-                start_time = ?6,
-                end_time = ?7,
-                exit_code = ?8,
-                duration_seconds = ?9
-             WHERE id = ?10",
+                pid = ?6,
+                start_time = ?7,
+                end_time = ?8,
+                exit_code = ?9,
+                duration_seconds = ?10
+             WHERE id = ?11",
             params![
                 run.agent_type,
                 run.issue_number,
                 run.prompt,
                 run.workdir,
                 run.config_json,
+                run.pid,
                 run.start_time.to_rfc3339(),
                 run.end_time.map(|dt| dt.to_rfc3339()),
                 run.exit_code,
@@ -90,7 +93,7 @@ impl<'db> AgentRunRepository<'db> {
     pub fn find_by_id(&self, id: i64) -> Result<AgentRun> {
         let conn = self.db.connection();
         conn.query_row(
-            "SELECT id, agent_type, issue_number, prompt, workdir, config_json,
+            "SELECT id, agent_type, issue_number, prompt, workdir, config_json, pid,
                     start_time, end_time, exit_code, duration_seconds, created_at
              FROM agent_runs
              WHERE id = ?1",
@@ -109,7 +112,7 @@ impl<'db> AgentRunRepository<'db> {
     pub fn find_by_issue(&self, issue_number: i64) -> Result<Vec<AgentRun>> {
         let conn = self.db.connection();
         let mut stmt = conn.prepare(
-            "SELECT id, agent_type, issue_number, prompt, workdir, config_json,
+            "SELECT id, agent_type, issue_number, prompt, workdir, config_json, pid,
                     start_time, end_time, exit_code, duration_seconds, created_at
              FROM agent_runs
              WHERE issue_number = ?1
@@ -131,7 +134,7 @@ impl<'db> AgentRunRepository<'db> {
     ) -> Result<Vec<AgentRun>> {
         let conn = self.db.connection();
         let mut stmt = conn.prepare(
-            "SELECT id, agent_type, issue_number, prompt, workdir, config_json,
+            "SELECT id, agent_type, issue_number, prompt, workdir, config_json, pid,
                     start_time, end_time, exit_code, duration_seconds, created_at
              FROM agent_runs
              WHERE start_time >= ?1 AND start_time <= ?2
@@ -149,7 +152,7 @@ impl<'db> AgentRunRepository<'db> {
     pub fn find_by_agent_type(&self, agent_type: &str) -> Result<Vec<AgentRun>> {
         let conn = self.db.connection();
         let mut stmt = conn.prepare(
-            "SELECT id, agent_type, issue_number, prompt, workdir, config_json,
+            "SELECT id, agent_type, issue_number, prompt, workdir, config_json, pid,
                     start_time, end_time, exit_code, duration_seconds, created_at
              FROM agent_runs
              WHERE agent_type = ?1
@@ -169,7 +172,7 @@ impl<'db> AgentRunRepository<'db> {
 
         let query = if let Some(limit) = limit {
             format!(
-                "SELECT id, agent_type, issue_number, prompt, workdir, config_json,
+                "SELECT id, agent_type, issue_number, prompt, workdir, config_json, pid,
                         start_time, end_time, exit_code, duration_seconds, created_at
                  FROM agent_runs
                  ORDER BY start_time DESC
@@ -177,7 +180,7 @@ impl<'db> AgentRunRepository<'db> {
                 limit
             )
         } else {
-            "SELECT id, agent_type, issue_number, prompt, workdir, config_json,
+            "SELECT id, agent_type, issue_number, prompt, workdir, config_json, pid,
                     start_time, end_time, exit_code, duration_seconds, created_at
              FROM agent_runs
              ORDER BY start_time DESC"
@@ -225,11 +228,29 @@ impl<'db> AgentRunRepository<'db> {
         Ok(count)
     }
 
+    /// Find all running agents (no end_time, has PID)
+    pub fn find_running(&self) -> Result<Vec<AgentRun>> {
+        let conn = self.db.connection();
+        let mut stmt = conn.prepare(
+            "SELECT id, agent_type, issue_number, prompt, workdir, config_json, pid,
+                    start_time, end_time, exit_code, duration_seconds, created_at
+             FROM agent_runs
+             WHERE end_time IS NULL AND pid IS NOT NULL
+             ORDER BY start_time DESC",
+        )?;
+
+        let runs = stmt
+            .query_map([], Self::map_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(runs)
+    }
+
     /// Map a database row to an AgentRun model
     fn map_row(row: &Row) -> rusqlite::Result<AgentRun> {
-        let start_time_str: String = row.get(6)?;
-        let end_time_str: Option<String> = row.get(7)?;
-        let created_at_str: String = row.get(10)?;
+        let start_time_str: String = row.get(7)?;
+        let end_time_str: Option<String> = row.get(8)?;
+        let created_at_str: String = row.get(11)?;
 
         Ok(AgentRun {
             id: Some(row.get(0)?),
@@ -238,10 +259,11 @@ impl<'db> AgentRunRepository<'db> {
             prompt: row.get(3)?,
             workdir: row.get(4)?,
             config_json: row.get(5)?,
+            pid: row.get(6)?,
             start_time: DateTime::parse_from_rfc3339(&start_time_str)
                 .map_err(|e| {
                     rusqlite::Error::FromSqlConversionFailure(
-                        6,
+                        7,
                         rusqlite::types::Type::Text,
                         Box::new(e),
                     )
@@ -252,17 +274,17 @@ impl<'db> AgentRunRepository<'db> {
                 .transpose()
                 .map_err(|e| {
                     rusqlite::Error::FromSqlConversionFailure(
-                        7,
+                        8,
                         rusqlite::types::Type::Text,
                         Box::new(e),
                     )
                 })?,
-            exit_code: row.get(8)?,
-            duration_seconds: row.get(9)?,
+            exit_code: row.get(9)?,
+            duration_seconds: row.get(10)?,
             created_at: DateTime::parse_from_rfc3339(&created_at_str)
                 .map_err(|e| {
                     rusqlite::Error::FromSqlConversionFailure(
-                        10,
+                        11,
                         rusqlite::types::Type::Text,
                         Box::new(e),
                     )
