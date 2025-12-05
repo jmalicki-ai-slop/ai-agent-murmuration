@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use murmur_core::{Config, GitRepo, Secrets};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use commands::{IssueArgs, RunArgs, StatusArgs, WorkArgs, WorktreeArgs};
+use commands::{AgentArgs, IssueArgs, RunArgs, StatusArgs, WorkArgs, WorktreeArgs};
 
 /// Try to detect the GitHub repo from the current directory
 fn detect_repo() -> Option<String> {
@@ -76,6 +76,10 @@ enum Commands {
     #[command(visible_alias = "r")]
     Run(RunArgs),
 
+    /// Start a typed agent with specialized behavior
+    #[command(visible_alias = "a")]
+    Agent(AgentArgs),
+
     /// Manage git worktrees
     #[command(visible_alias = "wt")]
     Worktree(WorktreeArgs),
@@ -130,6 +134,9 @@ async fn main() -> anyhow::Result<()> {
             println!("murmur {}", env!("CARGO_PKG_VERSION"));
         }
         Some(Commands::Run(args)) => {
+            args.execute(cli.verbose, &config).await?;
+        }
+        Some(Commands::Agent(args)) => {
             args.execute(cli.verbose, &config).await?;
         }
         Some(Commands::Worktree(args)) => {
