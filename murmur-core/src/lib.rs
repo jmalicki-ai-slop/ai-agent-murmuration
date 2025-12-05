@@ -12,7 +12,9 @@ pub mod secrets;
 pub mod workflow;
 
 pub use agent::{
-    AgentHandle, AgentSpawner, CostInfo, OutputStreamer, PrintHandler, StreamHandler, StreamMessage,
+    AgentFactory, AgentHandle, AgentSpawner, AgentType, CoordinatorAgent, CostInfo, ImplementAgent,
+    OutputStreamer, PrintHandler, PromptBuilder, PromptContext, ReviewAgent, StreamHandler,
+    StreamMessage, TestAgent, TypedAgent,
 };
 pub use config::{AgentConfig, Config};
 pub use error::{Error, Result};

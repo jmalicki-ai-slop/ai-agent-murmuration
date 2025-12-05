@@ -110,9 +110,26 @@ fn render_template(template: &str, context: &PromptContext) -> String {
         result = result.replace(&placeholder, value);
     }
 
-    // Remove any remaining unset placeholders
-    let re = regex::Regex::new(r"\{\{[A-Z_]+\}\}").unwrap();
-    result = re.replace_all(&result, "(not specified)").to_string();
+    // Remove any remaining unset placeholders (simple pattern matching)
+    // Replace {{UPPERCASE_NAME}} with "(not specified)"
+    loop {
+        let start = result.find("{{");
+        let end = result.find("}}");
+
+        match (start, end) {
+            (Some(s), Some(e)) if s < e => {
+                let placeholder = &result[s..=e + 1];
+                // Check if it's an uppercase placeholder
+                let inside = &result[s + 2..e];
+                if inside.chars().all(|c| c.is_ascii_uppercase() || c == '_') {
+                    result = result.replacen(placeholder, "(not specified)", 1);
+                } else {
+                    break;
+                }
+            }
+            _ => break,
+        }
+    }
 
     result
 }
@@ -258,9 +275,7 @@ mod tests {
 
     #[test]
     fn test_empty_files_list() {
-        let context = PromptContext::new()
-            .with_task("Task")
-            .with_files(&[]);
+        let context = PromptContext::new().with_task("Task").with_files(&[]);
 
         let rendered = render(AgentType::Implement, &context);
         assert!(rendered.contains("(no specific files)"));

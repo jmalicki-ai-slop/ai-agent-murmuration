@@ -107,17 +107,29 @@ mod tests {
 
     #[test]
     fn test_agent_type_from_str() {
-        assert_eq!("implement".parse::<AgentType>().unwrap(), AgentType::Implement);
+        assert_eq!(
+            "implement".parse::<AgentType>().unwrap(),
+            AgentType::Implement
+        );
         assert_eq!("impl".parse::<AgentType>().unwrap(), AgentType::Implement);
         assert_eq!("test".parse::<AgentType>().unwrap(), AgentType::Test);
         assert_eq!("review".parse::<AgentType>().unwrap(), AgentType::Review);
-        assert_eq!("coordinator".parse::<AgentType>().unwrap(), AgentType::Coordinator);
-        assert_eq!("coord".parse::<AgentType>().unwrap(), AgentType::Coordinator);
+        assert_eq!(
+            "coordinator".parse::<AgentType>().unwrap(),
+            AgentType::Coordinator
+        );
+        assert_eq!(
+            "coord".parse::<AgentType>().unwrap(),
+            AgentType::Coordinator
+        );
     }
 
     #[test]
     fn test_agent_type_from_str_case_insensitive() {
-        assert_eq!("IMPLEMENT".parse::<AgentType>().unwrap(), AgentType::Implement);
+        assert_eq!(
+            "IMPLEMENT".parse::<AgentType>().unwrap(),
+            AgentType::Implement
+        );
         assert_eq!("Test".parse::<AgentType>().unwrap(), AgentType::Test);
     }
 

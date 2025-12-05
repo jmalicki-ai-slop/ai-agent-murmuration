@@ -45,9 +45,7 @@ impl TypedAgent {
         task: impl Into<String>,
         workdir: impl AsRef<Path>,
     ) -> Result<AgentHandle> {
-        let prompt = PromptBuilder::new(self.agent_type)
-            .task(task)
-            .build();
+        let prompt = PromptBuilder::new(self.agent_type).task(task).build();
 
         self.spawner.spawn(prompt, workdir).await
     }
@@ -309,7 +307,7 @@ fn get_git_diff(workdir: &Path) -> Result<String> {
         .map_err(Error::Io)?;
 
     if !output.status.success() {
-        return Err(Error::Git(format!(
+        return Err(Error::Agent(format!(
             "Failed to get git diff: {}",
             String::from_utf8_lossy(&output.stderr)
         )));
@@ -413,14 +411,20 @@ mod tests {
         assert_eq!(factory.implement().inner.agent_type, AgentType::Implement);
         assert_eq!(factory.test().inner.agent_type, AgentType::Test);
         assert_eq!(factory.review().inner.agent_type, AgentType::Review);
-        assert_eq!(factory.coordinator().inner.agent_type, AgentType::Coordinator);
+        assert_eq!(
+            factory.coordinator().inner.agent_type,
+            AgentType::Coordinator
+        );
     }
 
     #[test]
     fn test_factory_create_by_type() {
         let factory = AgentFactory::new();
 
-        assert_eq!(factory.create(AgentType::Implement).agent_type, AgentType::Implement);
+        assert_eq!(
+            factory.create(AgentType::Implement).agent_type,
+            AgentType::Implement
+        );
         assert_eq!(factory.create(AgentType::Test).agent_type, AgentType::Test);
     }
 
