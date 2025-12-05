@@ -289,7 +289,10 @@ impl WorkArgs {
             let exists_on_disk = path.exists();
 
             if existing.is_active() && exists_on_disk {
-                println!("⚠️  Worktree already exists and is active:");
+                println!(
+                    "{}  Worktree already exists and is active:",
+                    emoji(no_emoji, "⚠️", "[WARN]")
+                );
                 println!("  Path:   {}", existing.path);
                 println!("  Branch: {}", existing.branch_name);
                 println!();
@@ -311,7 +314,10 @@ impl WorkArgs {
                     // Worktree directory and branch will be cleaned up by create_worktree logic
                 }
             } else if !exists_on_disk {
-                println!("⚠️  Found stale worktree entry in database:");
+                println!(
+                    "{}  Found stale worktree entry in database:",
+                    emoji(no_emoji, "⚠️", "[WARN]")
+                );
                 println!("  Path:   {} (missing)", existing.path);
                 println!("  Branch: {}", existing.branch_name);
                 println!();
@@ -505,8 +511,15 @@ impl WorkArgs {
             // Auto-push and auto-PR if configured
             if config.workflow.auto_push || config.workflow.auto_pr {
                 println!();
-                self.handle_post_completion(config, &info, &branch_name, &issue.title, verbose, no_emoji)
-                    .await?;
+                self.handle_post_completion(
+                    config,
+                    &info,
+                    &branch_name,
+                    &issue.title,
+                    verbose,
+                    no_emoji,
+                )
+                .await?;
             } else {
                 println!();
                 println!("Next steps:");
@@ -579,7 +592,7 @@ impl WorkArgs {
         let has_commits = !log_output.stdout.is_empty();
 
         if !has_changes && !has_commits {
-            println!("ℹ️  No changes to push");
+            println!("{}  No changes to push", emoji(no_emoji, "ℹ️", "[INFO]"));
             return Ok(());
         }
 
@@ -594,7 +607,10 @@ impl WorkArgs {
 
             if !push_result.status.success() {
                 let stderr = String::from_utf8_lossy(&push_result.stderr);
-                eprintln!("⚠️  Failed to push branch:");
+                eprintln!(
+                    "{}  Failed to push branch:",
+                    emoji(no_emoji, "⚠️", "[WARN]")
+                );
                 eprintln!("{}", stderr);
                 eprintln!();
                 eprintln!("You can push manually with:");
@@ -612,7 +628,10 @@ impl WorkArgs {
                 return Ok(());
             }
 
-            println!("✅ Branch pushed successfully");
+            println!(
+                "{} Branch pushed successfully",
+                emoji(no_emoji, "✅", "[OK]")
+            );
 
             if verbose {
                 let stdout = String::from_utf8_lossy(&push_result.stdout);
@@ -664,7 +683,7 @@ impl WorkArgs {
 
             if !pr_result.status.success() {
                 let stderr = String::from_utf8_lossy(&pr_result.stderr);
-                eprintln!("⚠️  Failed to create PR:");
+                eprintln!("{}  Failed to create PR:", emoji(no_emoji, "⚠️", "[WARN]"));
                 eprintln!("{}", stderr);
                 eprintln!();
 
@@ -673,7 +692,10 @@ impl WorkArgs {
                     || stderr.contains("token")
                     || stderr.contains("permission")
                 {
-                    eprintln!("💡 This looks like a permission issue. Please ensure:");
+                    eprintln!(
+                        "{} This looks like a permission issue. Please ensure:",
+                        emoji(no_emoji, "💡", "[TIP]")
+                    );
                     eprintln!("  1. You have a valid GITHUB_TOKEN set");
                     eprintln!("  2. The token has 'repo' and 'workflow' scopes");
                     eprintln!("  3. You're authenticated with 'gh auth login'");
@@ -698,7 +720,10 @@ impl WorkArgs {
             }
 
             let stdout = String::from_utf8_lossy(&pr_result.stdout);
-            println!("✅ Pull request created successfully");
+            println!(
+                "{} Pull request created successfully",
+                emoji(no_emoji, "✅", "[OK]")
+            );
             println!("{}", stdout.trim());
         }
 
