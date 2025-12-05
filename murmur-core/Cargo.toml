@@ -17,6 +17,8 @@ git2.workspace = true
 url.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+murmur-db.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 tempfile = "3.15"

@@ -2,8 +2,13 @@
 
 use clap::Args;
 use murmur_core::{
-    AgentSpawner, BranchingOptions, Config, GitRepo, OutputStreamer, PrintHandler,
-    WorktreeMetadata, WorktreeOptions,
+    AgentSpawner, BranchingOptions, Config, GitRepo, OutputStreamer, WorktreeMetadata,
+    WorktreeOptions,
+};
+use murmur_db::{
+    models::{AgentRun, ConversationLog},
+    repos::{AgentRunRepository, ConversationRepository},
+    Database,
 };
 use murmur_github::{DependencyStatus, GitHubClient, IssueDependencies, IssueState};
 
@@ -28,6 +33,10 @@ pub struct WorkArgs {
     /// Don't start the agent, just create the worktree
     #[arg(long)]
     pub no_agent: bool,
+
+    /// Resume from the last interrupted or failed run for this issue
+    #[arg(long)]
+    pub resume: bool,
 }
 
 impl WorkArgs {
@@ -54,11 +63,82 @@ impl WorkArgs {
         );
         println!();
 
+        // Initialize database
+        let db = Database::open().map_err(|e| anyhow::anyhow!("Failed to open database: {}", e))?;
+
         // Fetch the issue
         let issue = client.get_issue(self.issue).await?;
 
         println!("#{}: {}", issue.number, issue.title);
         println!();
+
+        // Check for resumable runs if --resume flag is set
+        if self.resume {
+            use murmur_core::{
+                build_resume_prompt, find_latest_incomplete_run, reconstruct_conversation,
+            };
+
+            println!("Checking for incomplete runs to resume...");
+            match find_latest_incomplete_run(&db, self.issue as i64)
+                .map_err(|e| anyhow::anyhow!("{}", e))?
+            {
+                Some(resumable) => {
+                    println!("Found incomplete run from {}", resumable.start_time);
+                    println!("  Run ID: {}", resumable.run_id);
+                    println!("  Messages: {}", resumable.message_count);
+                    if let Some(exit_code) = resumable.exit_code {
+                        println!("  Exit code: {}", exit_code);
+                    } else {
+                        println!("  Status: Interrupted (no exit code)");
+                    }
+                    println!();
+
+                    if resumable.message_count == 0 {
+                        println!("⚠️  No conversation history found. Starting fresh instead.");
+                        println!();
+                    } else {
+                        // Reconstruct conversation
+                        let messages = reconstruct_conversation(&db, resumable.run_id)
+                            .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+                        println!(
+                            "Reconstructed {} messages from previous session",
+                            messages.len()
+                        );
+
+                        // Build resume prompt
+                        let original_prompt = build_prompt_from_issue(&issue);
+                        let reason = if resumable.had_error() {
+                            format!(
+                                "Previous session exited with error code {}",
+                                resumable.exit_code.unwrap()
+                            )
+                        } else {
+                            "Previous session was interrupted".to_string()
+                        };
+
+                        let _resume_prompt =
+                            build_resume_prompt(&original_prompt, &messages, &reason);
+
+                        println!("Resume prompt prepared. Note: Conversation history is for context only.");
+                        println!("The agent will review the current state and continue work.");
+                        println!();
+
+                        // TODO: Use resume_prompt instead of original prompt when spawning agent
+                        // This will require passing conversation history to Claude Code
+                        // For now, just inform the user
+                        println!("⚠️  Resume functionality detected previous session but will start fresh.");
+                        println!("Full resume with conversation history will be implemented in a future update.");
+                        println!();
+                    }
+                }
+                None => {
+                    println!("No incomplete runs found for this issue.");
+                    println!("Starting fresh...");
+                    println!();
+                }
+            }
+        }
 
         // Check dependencies unless --force
         if !self.force {
@@ -220,11 +300,33 @@ impl WorkArgs {
         println!("Starting agent...");
         println!();
 
+        // Create agent run record in database
+        let config_json = serde_json::to_string(&config.agent).unwrap_or_else(|_| "{}".to_string());
+
+        let mut agent_run = AgentRun::new(
+            "implementer",
+            &prompt,
+            info.path.to_str().unwrap_or(""),
+            config_json,
+        )
+        .with_issue_number(self.issue as i64);
+
+        let agent_repo = AgentRunRepository::new(&db);
+        let run_id = agent_repo
+            .insert(&agent_run)
+            .map_err(|e| anyhow::anyhow!("Failed to create agent run record: {}", e))?;
+
+        agent_run.id = Some(run_id);
+
+        if verbose {
+            println!("Agent run ID: {}", run_id);
+        }
+
         // Spawn agent
         let spawner = AgentSpawner::from_config(config.agent.clone());
         let mut handle = spawner.spawn(&prompt, &info.path).await?;
 
-        // Stream output
+        // Stream output with database logging
         let stdout = handle
             .child_mut()
             .stdout
@@ -232,13 +334,23 @@ impl WorkArgs {
             .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?;
 
         let mut streamer = OutputStreamer::new(stdout);
-        let mut handler = PrintHandler::new(verbose);
+
+        // Create a separate database connection for the handler
+        let handler_db = Database::open()
+            .map_err(|e| anyhow::anyhow!("Failed to open database for handler: {}", e))?;
+        let mut handler = DatabaseLoggingHandler::new(handler_db, run_id, verbose);
 
         if let Err(e) = streamer.stream(&mut handler).await {
             eprintln!("Stream error: {}", e);
         }
 
         let status = handle.wait().await?;
+
+        // Update agent run with completion status
+        agent_run.complete(status.code().unwrap_or(-1));
+        if let Err(e) = agent_repo.update(&agent_run) {
+            eprintln!("Warning: Failed to update agent run record: {}", e);
+        }
 
         println!();
         if status.success() {
@@ -284,4 +396,130 @@ fn build_prompt_from_issue(issue: &murmur_github::Issue) -> String {
     prompt.push_str("Please implement this issue. When done, provide a summary of changes made.");
 
     prompt
+}
+
+/// StreamHandler that logs to database and prints to console
+struct DatabaseLoggingHandler {
+    db: Database,
+    run_id: i64,
+    sequence: i64,
+    verbose: bool,
+}
+
+impl DatabaseLoggingHandler {
+    fn new(db: Database, run_id: i64, verbose: bool) -> Self {
+        Self {
+            db,
+            run_id,
+            sequence: 0,
+            verbose,
+        }
+    }
+
+    fn log_message(&mut self, message_type: &str, message_json: &str) {
+        let log = ConversationLog::new(self.run_id, self.sequence, message_type, message_json);
+
+        let repo = ConversationRepository::new(&self.db);
+        if let Err(e) = repo.insert(&log) {
+            if self.verbose {
+                eprintln!("Warning: Failed to log message to database: {}", e);
+            }
+        }
+
+        self.sequence += 1;
+    }
+}
+
+impl murmur_core::StreamHandler for DatabaseLoggingHandler {
+    fn on_system(&mut self, subtype: Option<&str>, session_id: Option<&str>) {
+        let msg = serde_json::json!({
+            "type": "system",
+            "subtype": subtype,
+            "session_id": session_id,
+        });
+        self.log_message("system", &msg.to_string());
+
+        if self.verbose {
+            if let Some(st) = subtype {
+                eprintln!("[system: {}]", st);
+            }
+        }
+    }
+
+    fn on_user(&mut self, message: &serde_json::Value) {
+        let msg = serde_json::json!({
+            "type": "user",
+            "message": message,
+        });
+        self.log_message("user", &msg.to_string());
+    }
+
+    fn on_assistant_text(&mut self, text: &str) {
+        let msg = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "text", "text": text}]
+            }
+        });
+        self.log_message("assistant", &msg.to_string());
+
+        print!("{}", text);
+    }
+
+    fn on_tool_use(&mut self, tool: &str, input: &serde_json::Value) {
+        let msg = serde_json::json!({
+            "type": "tool_use",
+            "tool": tool,
+            "input": input,
+        });
+        self.log_message("tool_use", &msg.to_string());
+
+        if self.verbose {
+            eprintln!("\n[tool: {} with input: {}]", tool, input);
+        }
+    }
+
+    fn on_tool_result(&mut self, output: &str, is_error: bool) {
+        let msg = serde_json::json!({
+            "type": "tool_result",
+            "output": output,
+            "is_error": is_error,
+        });
+        self.log_message("tool_result", &msg.to_string());
+
+        if self.verbose {
+            let prefix = if is_error { "error" } else { "result" };
+            let display = if output.len() > 200 {
+                format!("{}... ({} chars)", &output[..200], output.len())
+            } else {
+                output.to_string()
+            };
+            eprintln!("[{}: {}]", prefix, display);
+        }
+    }
+
+    fn on_complete(&mut self, cost: Option<&murmur_core::CostInfo>, duration_ms: Option<u64>) {
+        let msg = serde_json::json!({
+            "type": "result",
+            "cost": cost,
+            "duration_ms": duration_ms,
+        });
+        self.log_message("result", &msg.to_string());
+
+        println!();
+        if self.verbose {
+            if let Some(c) = cost {
+                eprintln!("[tokens: {} in, {} out]", c.input_tokens, c.output_tokens);
+            }
+            if let Some(d) = duration_ms {
+                eprintln!("[duration: {}ms]", d);
+            }
+        }
+    }
+
+    fn on_parse_error(&mut self, line: &str, error: &serde_json::Error) {
+        if self.verbose {
+            eprintln!("[parse error on line '{}': {}]", line, error);
+        }
+    }
 }

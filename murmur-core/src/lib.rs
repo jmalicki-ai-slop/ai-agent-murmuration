@@ -9,6 +9,7 @@ pub mod error;
 pub mod git;
 pub mod plan;
 pub mod secrets;
+pub mod workflow;
 
 pub use agent::{
     AgentHandle, AgentSpawner, CostInfo, OutputStreamer, PrintHandler, StreamHandler, StreamMessage,
@@ -23,3 +24,7 @@ pub use git::{
 };
 pub use plan::{parse_plan, Phase, Plan, PlannedPR};
 pub use secrets::{GitHubSecrets, Secrets};
+pub use workflow::{
+    build_resume_prompt, find_incomplete_runs, find_latest_incomplete_run,
+    reconstruct_conversation, ConversationMessage, ResumableRun,
+};
