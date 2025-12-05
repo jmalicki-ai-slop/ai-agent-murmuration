@@ -69,6 +69,19 @@ impl GitRepo {
             }
         }
 
+        // Check if branch already exists and force delete it if --force is enabled
+        if self.branch_exists(&options.branch_name)? {
+            if options.force {
+                tracing::info!("Deleting existing branch: {}", options.branch_name);
+                self.delete_branch(&options.branch_name)?;
+            } else {
+                return Err(Error::Config(format!(
+                    "Branch '{}' already exists. Use --force to recreate.",
+                    options.branch_name
+                )));
+            }
+        }
+
         // Ensure parent directory exists
         if let Some(parent) = worktree_dir.parent() {
             std::fs::create_dir_all(parent)
@@ -92,15 +105,6 @@ impl GitRepo {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-
-            // Check if branch already exists
-            if stderr.contains("already exists") {
-                return Err(Error::Config(format!(
-                    "Branch '{}' already exists. Choose a different name.",
-                    options.branch_name
-                )));
-            }
-
             return Err(Error::Other(format!("git worktree add failed: {}", stderr)));
         }
 
@@ -212,6 +216,37 @@ impl GitRepo {
         let worktree_dir = worktree_path(&cache_dir, &repo_name, &options.branch_name);
 
         self.create_worktree(&worktree_dir, branching_point, options)
+    }
+
+    /// Check if a branch exists in the repository
+    pub fn branch_exists(&self, branch_name: &str) -> Result<bool> {
+        let output = Command::new("git")
+            .arg("rev-parse")
+            .arg("--verify")
+            .arg(branch_name)
+            .current_dir(self.root())
+            .output()
+            .map_err(|e| Error::Other(format!("Failed to check branch existence: {}", e)))?;
+
+        Ok(output.status.success())
+    }
+
+    /// Delete a local branch (force delete)
+    pub fn delete_branch(&self, branch_name: &str) -> Result<()> {
+        let output = Command::new("git")
+            .arg("branch")
+            .arg("-D")
+            .arg(branch_name)
+            .current_dir(self.root())
+            .output()
+            .map_err(|e| Error::Other(format!("Failed to delete branch: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(Error::Other(format!("git branch -D failed: {}", stderr)));
+        }
+
+        Ok(())
     }
 }
 

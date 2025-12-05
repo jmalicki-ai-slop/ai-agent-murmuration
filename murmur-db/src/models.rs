@@ -159,6 +159,96 @@ impl ConversationLog {
     }
 }
 
+/// Worktree tracking record
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorktreeRecord {
+    /// Unique identifier for this worktree
+    pub id: Option<i64>,
+
+    /// Full path to the worktree directory
+    pub path: String,
+
+    /// Branch name
+    pub branch_name: String,
+
+    /// GitHub issue number if associated with an issue
+    pub issue_number: Option<i64>,
+
+    /// Agent run ID if associated with a run
+    pub agent_run_id: Option<i64>,
+
+    /// Path to the main repository (for finding git repo when worktree is cached)
+    pub main_repo_path: Option<String>,
+
+    /// Status: active, completed, abandoned, stale
+    pub status: String,
+
+    /// When the worktree was created
+    pub created_at: DateTime<Utc>,
+
+    /// When the worktree was last updated
+    pub updated_at: DateTime<Utc>,
+}
+
+impl WorktreeRecord {
+    /// Create a new worktree record
+    pub fn new(path: impl Into<String>, branch_name: impl Into<String>) -> Self {
+        let now = Utc::now();
+        Self {
+            id: None,
+            path: path.into(),
+            branch_name: branch_name.into(),
+            issue_number: None,
+            agent_run_id: None,
+            main_repo_path: None,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Set the issue number for this worktree
+    pub fn with_issue_number(mut self, issue_number: i64) -> Self {
+        self.issue_number = Some(issue_number);
+        self
+    }
+
+    /// Set the agent run ID for this worktree
+    pub fn with_agent_run_id(mut self, agent_run_id: i64) -> Self {
+        self.agent_run_id = Some(agent_run_id);
+        self
+    }
+
+    /// Set the main repository path for this worktree
+    pub fn with_main_repo_path(mut self, main_repo_path: impl Into<String>) -> Self {
+        self.main_repo_path = Some(main_repo_path.into());
+        self
+    }
+
+    /// Mark the worktree as completed
+    pub fn mark_completed(&mut self) {
+        self.status = "completed".to_string();
+        self.updated_at = Utc::now();
+    }
+
+    /// Mark the worktree as abandoned
+    pub fn mark_abandoned(&mut self) {
+        self.status = "abandoned".to_string();
+        self.updated_at = Utc::now();
+    }
+
+    /// Mark the worktree as stale (directory missing or agent not running)
+    pub fn mark_stale(&mut self) {
+        self.status = "stale".to_string();
+        self.updated_at = Utc::now();
+    }
+
+    /// Check if the worktree is active
+    pub fn is_active(&self) -> bool {
+        self.status == "active"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
