@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use murmur_core::{Config, GitRepo, Secrets};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use commands::{IssueArgs, RunArgs, WorkArgs, WorktreeArgs};
+use commands::{IssueArgs, RunArgs, StatusArgs, WorkArgs, WorktreeArgs};
 
 /// Try to detect the GitHub repo from the current directory
 fn detect_repo() -> Option<String> {
@@ -84,6 +84,10 @@ enum Commands {
     #[command(visible_alias = "w")]
     Work(WorkArgs),
 
+    /// Show status of running agents and worktrees
+    #[command(visible_alias = "s")]
+    Status(StatusArgs),
+
     /// Show current configuration
     Config,
 
@@ -136,6 +140,9 @@ async fn main() -> anyhow::Result<()> {
             // Try to detect repo from current directory
             let repo = detect_repo();
             args.execute(cli.verbose, &config, repo.as_deref()).await?;
+        }
+        Some(Commands::Status(args)) => {
+            args.execute(cli.verbose).await?;
         }
         Some(Commands::Config) => {
             println!("Murmur Configuration");

@@ -407,6 +407,14 @@ impl WorkArgs {
 
         let mut handle = spawner.spawn(&prompt, &info.path).await?;
 
+        // Get PID and update the database record
+        if let Some(pid) = handle.pid() {
+            agent_run.pid = Some(pid as i32);
+            if let Err(e) = agent_repo.update(&agent_run) {
+                eprintln!("Warning: Failed to update agent run with PID: {}", e);
+            }
+        }
+
         // Stream output with database logging
         let stdout = handle
             .child_mut()

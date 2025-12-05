@@ -24,6 +24,9 @@ pub struct AgentRun {
     /// Agent configuration as JSON
     pub config_json: String,
 
+    /// Process ID of the running agent (None if not tracked or completed)
+    pub pid: Option<i32>,
+
     /// When the agent started
     pub start_time: DateTime<Utc>,
 
@@ -56,6 +59,7 @@ impl AgentRun {
             prompt: prompt.into(),
             workdir: workdir.into(),
             config_json: config_json.into(),
+            pid: None,
             start_time: now,
             end_time: None,
             exit_code: None,
@@ -67,6 +71,12 @@ impl AgentRun {
     /// Set the issue number for this run
     pub fn with_issue_number(mut self, issue_number: i64) -> Self {
         self.issue_number = Some(issue_number);
+        self
+    }
+
+    /// Set the process ID for this run
+    pub fn with_pid(mut self, pid: i32) -> Self {
+        self.pid = Some(pid);
         self
     }
 
