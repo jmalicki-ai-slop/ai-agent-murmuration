@@ -16,5 +16,7 @@ pub mod repos;
 pub use connection::Database;
 pub use conversation_logger::ConversationLogger;
 pub use error::{Error, Result};
-pub use models::{AgentRun, ConversationLog, WorktreeRecord};
-pub use repos::{AgentRunRepository, ConversationRepository, WorktreeRepository};
+pub use models::{AgentRun, ConversationLog, IssueState, WorktreeRecord};
+pub use repos::{
+    AgentRunRepository, ConversationRepository, IssueStateRepository, WorktreeRepository,
+};

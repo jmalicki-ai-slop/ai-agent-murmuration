@@ -259,6 +259,142 @@ impl WorktreeRecord {
     }
 }
 
+/// GitHub issue state tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueState {
+    /// Unique identifier for this record
+    pub id: Option<i64>,
+
+    /// GitHub issue number
+    pub issue_number: i64,
+
+    /// Repository in owner/repo format
+    pub repository: String,
+
+    /// Issue title
+    pub title: String,
+
+    /// Current status: open, in_progress, blocked, completed, failed
+    pub status: String,
+
+    /// Labels as JSON array
+    pub labels_json: Option<String>,
+
+    /// Dependencies as JSON array (list of issue numbers)
+    pub dependencies_json: Option<String>,
+
+    /// Last agent run ID that worked on this issue
+    pub last_agent_run_id: Option<i64>,
+
+    /// When this issue was last worked on
+    pub last_worked_at: Option<DateTime<Utc>>,
+
+    /// Last error message if status is failed
+    pub last_error: Option<String>,
+
+    /// When this record was created
+    pub created_at: DateTime<Utc>,
+
+    /// When this record was last updated
+    pub updated_at: DateTime<Utc>,
+}
+
+impl IssueState {
+    /// Create a new issue state record
+    pub fn new(issue_number: i64, repository: impl Into<String>, title: impl Into<String>) -> Self {
+        let now = Utc::now();
+        Self {
+            id: None,
+            issue_number,
+            repository: repository.into(),
+            title: title.into(),
+            status: "open".to_string(),
+            labels_json: None,
+            dependencies_json: None,
+            last_agent_run_id: None,
+            last_worked_at: None,
+            last_error: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Set labels from a vector
+    pub fn with_labels(mut self, labels: Vec<String>) -> Self {
+        self.labels_json = Some(serde_json::to_string(&labels).unwrap_or_default());
+        self
+    }
+
+    /// Set dependencies from a vector of issue numbers
+    pub fn with_dependencies(mut self, deps: Vec<i64>) -> Self {
+        self.dependencies_json = Some(serde_json::to_string(&deps).unwrap_or_default());
+        self
+    }
+
+    /// Mark as in progress
+    pub fn start_work(&mut self) {
+        self.status = "in_progress".to_string();
+        self.last_worked_at = Some(Utc::now());
+        self.updated_at = Utc::now();
+    }
+
+    /// Mark as completed
+    pub fn complete_work(&mut self) {
+        self.status = "completed".to_string();
+        self.last_error = None;
+        self.updated_at = Utc::now();
+    }
+
+    /// Mark as failed with error message
+    pub fn fail_work(&mut self, error: impl Into<String>) {
+        self.status = "failed".to_string();
+        self.last_error = Some(error.into());
+        self.updated_at = Utc::now();
+    }
+
+    /// Mark as blocked
+    pub fn mark_blocked(&mut self) {
+        self.status = "blocked".to_string();
+        self.updated_at = Utc::now();
+    }
+
+    /// Check if the issue is in progress
+    pub fn is_in_progress(&self) -> bool {
+        self.status == "in_progress"
+    }
+
+    /// Check if the issue is completed
+    pub fn is_completed(&self) -> bool {
+        self.status == "completed"
+    }
+
+    /// Check if the issue is blocked
+    pub fn is_blocked(&self) -> bool {
+        self.status == "blocked"
+    }
+
+    /// Check if the issue has failed
+    pub fn has_failed(&self) -> bool {
+        self.status == "failed"
+    }
+
+    /// Get labels as a vector
+    pub fn labels(&self) -> Vec<String> {
+        self.labels_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Get dependencies as a vector of issue numbers
+    pub fn dependencies(&self) -> Vec<i64> {
+        self.dependencies_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

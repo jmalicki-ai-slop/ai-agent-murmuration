@@ -189,6 +189,46 @@ impl Database {
                 .execute("ALTER TABLE worktrees ADD COLUMN main_repo_path TEXT", [])?;
         }
 
+        // Create issue_states table for tracking GitHub issue status
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS issue_states (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                issue_number INTEGER NOT NULL,
+                repository TEXT NOT NULL,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                labels_json TEXT,
+                dependencies_json TEXT,
+                last_agent_run_id INTEGER,
+                last_worked_at TEXT,
+                last_error TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (last_agent_run_id) REFERENCES agent_runs(id) ON DELETE SET NULL,
+                UNIQUE(issue_number, repository)
+            )",
+            [],
+        )?;
+
+        // Create indexes for issue_states
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_issue_states_repo
+             ON issue_states(repository)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_issue_states_status
+             ON issue_states(status)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_issue_states_issue_repo
+             ON issue_states(issue_number, repository)",
+            [],
+        )?;
+
         Ok(())
     }
 
@@ -234,6 +274,18 @@ mod tests {
             .connection()
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='conversation_logs'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+
+        // Verify issue_states table exists
+        let count: i32 = db
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='issue_states'",
                 [],
                 |row| row.get(0),
             )
