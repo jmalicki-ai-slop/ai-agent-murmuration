@@ -322,9 +322,6 @@ impl WorkArgs {
             println!("Agent run ID: {}", run_id);
         }
 
-        // Create .murmur directory for agent outputs
-        std::fs::create_dir_all(info.path.join(".murmur")).ok();
-
         // Spawn agent with GitHub token if available
         let mut spawner = AgentSpawner::from_config(config.agent.clone());
 
@@ -366,27 +363,200 @@ impl WorkArgs {
         println!();
         if status.success() {
             println!("✅ Agent completed successfully");
+
+            // Auto-push and auto-PR if configured
+            if config.workflow.auto_push || config.workflow.auto_pr {
+                println!();
+                self.handle_post_completion(config, &info, &branch_name, &issue.title, verbose)
+                    .await?;
+            } else {
+                println!();
+                println!("Next steps:");
+                println!("  1. Review changes: cd {}", info.path.display());
+                println!("  2. Push branch: git push -u origin {}", branch_name);
+                println!(
+                    "  3. Create PR: gh pr create --title \"Fixes #{}\"",
+                    self.issue
+                );
+            }
         } else {
             println!("❌ Agent exited with code: {}", status.code().unwrap_or(-1));
+            println!();
+            println!("Next steps:");
+            println!("  1. Review changes: cd {}", info.path.display());
+            println!("  2. Fix issues and retry");
         }
 
-        println!();
-        println!("Next steps:");
-        println!("  1. Review changes: cd {}", info.path.display());
+        Ok(())
+    }
 
-        // Check if PR description file exists
-        let pr_desc_path = info.path.join(".murmur").join("pr-description.md");
-        if pr_desc_path.exists() {
-            println!(
-                "  2. Create PR: gh pr create --body-file {}",
-                pr_desc_path.display()
-            );
+    /// Handle post-completion tasks: push and PR creation
+    async fn handle_post_completion(
+        &self,
+        config: &Config,
+        info: &murmur_core::WorktreeInfo,
+        branch_name: &str,
+        issue_title: &str,
+        verbose: bool,
+    ) -> anyhow::Result<()> {
+        use std::process::Command;
+
+        // Check if there are any commits to push
+        let status_output = Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&info.path)
+            .output()?;
+
+        let has_changes = !status_output.stdout.is_empty();
+
+        // Get the default branch dynamically
+        let default_branch_output = Command::new("git")
+            .args(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
+            .current_dir(&info.path)
+            .output()?;
+
+        let default_branch = if default_branch_output.status.success() {
+            String::from_utf8_lossy(&default_branch_output.stdout)
+                .trim()
+                .to_string()
         } else {
-            println!(
-                "  2. Create PR: gh pr create --title \"Fixes #{}\"",
-                self.issue
-            );
-            println!("     (Note: PR description file not found at .murmur/pr-description.md)");
+            // Fallback to origin/main if we can't determine the default branch
+            "origin/main".to_string()
+        };
+
+        let log_output = Command::new("git")
+            .args([
+                "log",
+                &format!("{}..{}", default_branch, branch_name),
+                "--oneline",
+            ])
+            .current_dir(&info.path)
+            .output()?;
+
+        let has_commits = !log_output.stdout.is_empty();
+
+        if !has_changes && !has_commits {
+            println!("ℹ️  No changes to push");
+            return Ok(());
+        }
+
+        // Auto-push if configured
+        if config.workflow.auto_push {
+            println!("Pushing branch to origin...");
+
+            let push_result = Command::new("git")
+                .args(["push", "-u", "origin", branch_name])
+                .current_dir(&info.path)
+                .output()?;
+
+            if !push_result.status.success() {
+                let stderr = String::from_utf8_lossy(&push_result.stderr);
+                eprintln!("⚠️  Failed to push branch:");
+                eprintln!("{}", stderr);
+                eprintln!();
+                eprintln!("You can push manually with:");
+                eprintln!(
+                    "  cd {} && git push -u origin {}",
+                    info.path.display(),
+                    branch_name
+                );
+
+                if !config.workflow.auto_pr {
+                    return Ok(());
+                }
+                eprintln!();
+                eprintln!("Skipping PR creation due to push failure.");
+                return Ok(());
+            }
+
+            println!("✅ Branch pushed successfully");
+
+            if verbose {
+                let stdout = String::from_utf8_lossy(&push_result.stdout);
+                if !stdout.is_empty() {
+                    println!("{}", stdout);
+                }
+            }
+        }
+
+        // Auto-PR if configured
+        if config.workflow.auto_pr {
+            println!();
+            println!("Creating pull request...");
+
+            // Check for PR description file
+            let pr_desc_path = info.path.join(".murmur").join("pr-description.md");
+
+            let pr_result = if pr_desc_path.exists() {
+                if verbose {
+                    println!("Using PR description from: {}", pr_desc_path.display());
+                }
+
+                Command::new("gh")
+                    .args([
+                        "pr",
+                        "create",
+                        "--body-file",
+                        pr_desc_path.to_str().unwrap(),
+                    ])
+                    .current_dir(&info.path)
+                    .output()?
+            } else {
+                if verbose {
+                    println!("No .murmur/pr-description.md found, using default description");
+                }
+
+                Command::new("gh")
+                    .args([
+                        "pr",
+                        "create",
+                        "--title",
+                        issue_title,
+                        "--body",
+                        &format!("Closes #{}", self.issue),
+                    ])
+                    .current_dir(&info.path)
+                    .output()?
+            };
+
+            if !pr_result.status.success() {
+                let stderr = String::from_utf8_lossy(&pr_result.stderr);
+                eprintln!("⚠️  Failed to create PR:");
+                eprintln!("{}", stderr);
+                eprintln!();
+
+                // Check for common permission errors
+                if stderr.contains("authentication")
+                    || stderr.contains("token")
+                    || stderr.contains("permission")
+                {
+                    eprintln!("💡 This looks like a permission issue. Please ensure:");
+                    eprintln!("  1. You have a valid GITHUB_TOKEN set");
+                    eprintln!("  2. The token has 'repo' and 'workflow' scopes");
+                    eprintln!("  3. You're authenticated with 'gh auth login'");
+                    eprintln!();
+                }
+
+                eprintln!("You can create the PR manually with:");
+                if pr_desc_path.exists() {
+                    eprintln!(
+                        "  cd {} && gh pr create --body-file .murmur/pr-description.md",
+                        info.path.display()
+                    );
+                } else {
+                    eprintln!(
+                        "  cd {} && gh pr create --title \"{}\" --body \"Closes #{}\"",
+                        info.path.display(),
+                        issue_title,
+                        self.issue
+                    );
+                }
+                return Ok(());
+            }
+
+            let stdout = String::from_utf8_lossy(&pr_result.stdout);
+            println!("✅ Pull request created successfully");
+            println!("{}", stdout.trim());
         }
 
         Ok(())
@@ -415,19 +585,7 @@ fn build_prompt_from_issue(issue: &murmur_github::Issue) -> String {
         prompt.push_str("\n\n");
     }
 
-    prompt.push_str("Please implement this issue.\n\n");
-    prompt.push_str("IMPORTANT: Before completing your work, you MUST:\n");
-    prompt.push_str("1. Write a `.murmur/pr-description.md` file containing:\n");
-    prompt.push_str("   - A clear title for the PR\n");
-    prompt.push_str("   - A summary of the changes made\n");
-    prompt.push_str("   - List of key files modified\n");
-    prompt.push_str("   - Test plan or verification steps\n");
-    prompt.push_str(&format!(
-        "   - Reference to close this issue: 'Closes #{}'\n",
-        issue.number
-    ));
-    prompt.push_str("2. Ensure all changes are committed to git\n\n");
-    prompt.push_str("After writing the PR description file, provide a summary of your changes.");
+    prompt.push_str("Please implement this issue. When done, provide a summary of changes made.");
 
     prompt
 }

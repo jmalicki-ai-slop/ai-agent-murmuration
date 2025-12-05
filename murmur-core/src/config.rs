@@ -32,12 +32,35 @@ impl Default for AgentConfig {
     }
 }
 
+/// Workflow automation configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct WorkflowConfig {
+    /// Automatically push branch after agent completion
+    pub auto_push: bool,
+
+    /// Automatically create PR after agent completion
+    pub auto_pr: bool,
+}
+
+impl Default for WorkflowConfig {
+    fn default() -> Self {
+        Self {
+            auto_push: true,
+            auto_pr: true,
+        }
+    }
+}
+
 /// Root configuration structure
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     /// Agent configuration
     pub agent: AgentConfig,
+
+    /// Workflow automation configuration
+    pub workflow: WorkflowConfig,
 }
 
 impl Config {
@@ -140,6 +163,10 @@ mod tests {
 [agent]
 claude_path = "/usr/local/bin/claude"
 model = "claude-sonnet-4-20250514"
+
+[workflow]
+auto_push = false
+auto_pr = true
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.agent.claude_path, "/usr/local/bin/claude");
@@ -147,6 +174,8 @@ model = "claude-sonnet-4-20250514"
             config.agent.model,
             Some("claude-sonnet-4-20250514".to_string())
         );
+        assert!(!config.workflow.auto_push);
+        assert!(config.workflow.auto_pr);
     }
 
     #[test]
