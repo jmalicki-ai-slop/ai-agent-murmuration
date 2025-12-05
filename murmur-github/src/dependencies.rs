@@ -52,15 +52,57 @@ impl std::fmt::Display for IssueRef {
 /// Parsed dependencies from an issue
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IssueDependencies {
-    /// Issues this depends on
+    /// Issues this depends on (from GitHub native tracking or markdown fallback)
     pub depends_on: Vec<IssueRef>,
     /// Issues that block this
     pub blocked_by: Vec<IssueRef>,
     /// Parent epic (if any)
     pub parent: Option<IssueRef>,
+    /// Issues tracked by this issue (from GitHub native tracking)
+    pub tracked_issues: Vec<IssueRef>,
+    /// Issues that track this issue (from GitHub native tracking)
+    pub tracked_in_issues: Vec<IssueRef>,
 }
 
 impl IssueDependencies {
+    /// Create dependencies from an Issue with native GitHub tracking
+    ///
+    /// This uses the tracked_issues and tracked_in_issues fields populated by GraphQL,
+    /// and falls back to markdown parsing if those are empty.
+    #[allow(clippy::result_large_err)]
+    pub fn from_issue(issue: &crate::Issue) -> Result<Self> {
+        let mut deps = Self::default();
+
+        // Prefer native GitHub tracking
+        if !issue.tracked_issues.is_empty() {
+            deps.tracked_issues = issue
+                .tracked_issues
+                .iter()
+                .map(|n| IssueRef::local(*n))
+                .collect();
+            // Treat tracked issues as dependencies
+            deps.depends_on = deps.tracked_issues.clone();
+        }
+
+        if !issue.tracked_in_issues.is_empty() {
+            deps.tracked_in_issues = issue
+                .tracked_in_issues
+                .iter()
+                .map(|n| IssueRef::local(*n))
+                .collect();
+        }
+
+        // If no native tracking, fall back to markdown parsing
+        if deps.tracked_issues.is_empty() {
+            let markdown_deps = Self::parse(&issue.body)?;
+            deps.depends_on = markdown_deps.depends_on;
+            deps.blocked_by = markdown_deps.blocked_by;
+            deps.parent = markdown_deps.parent;
+        }
+
+        Ok(deps)
+    }
+
     /// Parse dependencies from issue body text
     /// Returns an error if any dependency references are invalid
     #[allow(clippy::result_large_err)]
@@ -575,6 +617,9 @@ mod tests {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             pull_request_url: None,
+            tracked_issues: vec![],
+            tracked_in_issues: vec![],
+            sub_issues_summary: None,
         }
     }
 }

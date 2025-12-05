@@ -192,7 +192,8 @@ async fn show_issue(number: u64, repo: Option<&str>, verbose: bool) -> anyhow::R
         );
     }
 
-    let issue = client.get_issue(number).await?;
+    // Fetch issue with tracking information
+    let issue = client.get_issue_with_tracking(number).await?;
 
     println!();
     println!("#{}: {}", issue.number, issue.title);
@@ -230,11 +231,44 @@ async fn show_issue(number: u64, repo: Option<&str>, verbose: bool) -> anyhow::R
         }
     }
 
-    // Parse and show dependencies
-    match IssueDependencies::parse(&issue.body) {
+    // Show native GitHub tracking
+    if !issue.tracked_issues.is_empty() {
+        println!();
+        println!("Tracked Issues (GitHub Native):");
+        for dep_num in &issue.tracked_issues {
+            let status = match client.check_dependency_status(*dep_num).await {
+                Ok(DependencyStatus::Complete) => "✅",
+                Ok(DependencyStatus::InProgress { .. }) => "🔄",
+                Ok(DependencyStatus::Pending) => "❌",
+                Err(_) => "?",
+            };
+            println!("  {} #{}", status, dep_num);
+        }
+    }
+
+    if !issue.tracked_in_issues.is_empty() {
+        println!();
+        println!("Tracked In (GitHub Native):");
+        for parent_num in &issue.tracked_in_issues {
+            println!("  ← #{}", parent_num);
+        }
+    }
+
+    if let Some(ref summary) = issue.sub_issues_summary {
+        if summary.total > 0 {
+            println!();
+            println!(
+                "Sub-issues: {}/{} completed ({}%)",
+                summary.completed, summary.total, summary.percent_completed
+            );
+        }
+    }
+
+    // Parse and show dependencies (fallback for markdown-based deps)
+    match IssueDependencies::from_issue(&issue) {
         Ok(deps) if deps.has_dependencies() => {
             println!();
-            println!("Dependencies:");
+            println!("Dependencies (Markdown):");
 
             for dep in &deps.depends_on {
                 let status = if dep.is_local() {

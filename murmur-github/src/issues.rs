@@ -43,6 +43,26 @@ pub struct Issue {
     pub updated_at: DateTime<Utc>,
     /// Associated pull request URL (if this issue is a PR)
     pub pull_request_url: Option<String>,
+    /// Issues tracked by this issue (from GitHub task lists)
+    #[serde(default)]
+    pub tracked_issues: Vec<u64>,
+    /// Issues that track this issue
+    #[serde(default)]
+    pub tracked_in_issues: Vec<u64>,
+    /// Summary of sub-issues (from GitHub task lists)
+    #[serde(default)]
+    pub sub_issues_summary: Option<SubIssuesSummary>,
+}
+
+/// Summary of sub-issue completion status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubIssuesSummary {
+    /// Total number of sub-issues
+    pub total: u32,
+    /// Number of completed sub-issues
+    pub completed: u32,
+    /// Percentage completed (0-100)
+    pub percent_completed: u32,
 }
 
 impl From<OctocrabIssue> for Issue {
@@ -56,6 +76,9 @@ impl From<OctocrabIssue> for Issue {
             created_at: issue.created_at,
             updated_at: issue.updated_at,
             pull_request_url: issue.pull_request.map(|pr| pr.url.to_string()),
+            tracked_issues: vec![],
+            tracked_in_issues: vec![],
+            sub_issues_summary: None,
         }
     }
 }
@@ -89,6 +112,26 @@ impl GitHubClient {
             })?;
 
         Ok(issue.into())
+    }
+
+    /// Fetch a single issue by number with tracked issues populated
+    ///
+    /// This uses GraphQL to fetch GitHub's native issue tracking data
+    pub async fn get_issue_with_tracking(&self, number: u64) -> Result<Issue> {
+        debug!(number, "Fetching issue with tracking info");
+
+        // First get the basic issue data
+        let mut issue = self.get_issue(number).await?;
+
+        // Then fetch tracked issues via GraphQL
+        let (tracked_issues, tracked_in_issues, sub_issues_summary) =
+            self.get_tracked_issues(number).await?;
+
+        issue.tracked_issues = tracked_issues;
+        issue.tracked_in_issues = tracked_in_issues;
+        issue.sub_issues_summary = sub_issues_summary;
+
+        Ok(issue)
     }
 
     /// List issues with optional filters
