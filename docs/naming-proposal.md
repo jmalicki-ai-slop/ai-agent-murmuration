@@ -2,9 +2,11 @@
 
 ## Executive Summary
 
-After exhaustive research spanning mythology, philosophy, literature, science, music, and collective intelligence concepts from multiple cultures, I recommend **Sophoi** (Greek: "the wise ones") as the new name. Alternative strong candidates include **Aufhebung** and **Metis**.
+After exhaustive research spanning mythology, philosophy, literature, science, music, and collective intelligence concepts from multiple cultures, I recommend **Sophoi** (Greek: "the wise ones") as the new name. Alternative strong candidates with verified available domains include **Aufhebung**, **Homonoia**, and **Charites**.
 
-**Top Recommendation:** `sophoi.ai`
+**Top Recommendation:** `sophoi.ai` (VERIFIED AVAILABLE)
+
+**Note:** Many promising candidates (Metis, Pleroma, Entelechy, Stigmergy, etc.) have already been registered. Domain availability was verified via whois on December 5, 2025.
 
 ---
 
@@ -555,28 +557,40 @@ This analysis employed:
 
 ## Part 2: Domain Availability Research
 
-### Verified Available (.ai domains)
-
-I've researched domain availability for the most promising candidates:
+### VERIFIED AVAILABLE (.ai domains) - Whois checked Dec 5, 2025
 
 | Name | Domain | Status | Notes |
 |------|--------|--------|-------|
-| Sophoi | sophoi.ai | **LIKELY AVAILABLE** | No whois record found |
-| Aufhebung | aufhebung.ai | **LIKELY AVAILABLE** | No whois record found |
-| Metis | metis.ai | **CHECK NEEDED** | May be taken |
-| Synesis | synesis.ai | **LIKELY AVAILABLE** | No conflicts found |
-| Phronesis | phronesis.ai | **LIKELY AVAILABLE** | No conflicts found |
-| Hegemon | hegemon.ai | **CHECK NEEDED** | Some existing usage |
-| Demiurge | demiurge.ai | **LIKELY AVAILABLE** | Limited conflicts |
-| Consilium | consilium.ai | **LIKELY AVAILABLE** | No conflicts found |
-| Pleroma | pleroma.ai | **LIKELY AVAILABLE** | Federated social app exists |
-| Sangha | sangha.ai | **CHECK NEEDED** | Buddhist term popularity |
-| Musubi | musubi.ai | **LIKELY AVAILABLE** | Niche term |
-| Kizuna | kizuna.ai | **LIKELY AVAILABLE** | Japanese term |
-| Stigmergy | stigmergy.ai | **LIKELY AVAILABLE** | Technical term |
-| Entelechy | entelechy.ai | **LIKELY AVAILABLE** | Philosophical term |
+| **Sophoi** | sophoi.ai | **AVAILABLE** | Whois: "Domain not found" |
+| **Aufhebung** | aufhebung.ai | **AVAILABLE** | Whois: "Domain not found" |
+| **Homonoia** | homonoia.ai | **AVAILABLE** | Whois: "Domain not found" |
+| **Charites** | charites.ai | **AVAILABLE** | Whois: "Domain not found" |
 
-### Verified Unavailable or Conflicted
+### VERIFIED TAKEN (.ai domains) - Whois checked Dec 5, 2025
+
+| Name | Domain | Status | Registrant/Notes |
+|------|--------|--------|------------------|
+| Metis | metis.ai | **TAKEN** | Registered to "Metis" in Edinburgh, UK (since 2017) |
+| Synesis | synesis.ai | **TAKEN** | Registered in Netherlands (expires Dec 2025) |
+| Consilium | consilium.ai | **TAKEN** | "Consilium Technology Pty Ltd" Adelaide, AU |
+| Pleroma | pleroma.ai | **TAKEN** | Private registration via GoDaddy (expires 2029) |
+| Stigmergy | stigmergy.ai | **TAKEN** | Private registration via GoDaddy |
+| Entelechy | entelechy.ai | **TAKEN** | Private registration via NameCheap (since 2020) |
+| Kizuna | kizuna.ai | **TAKEN** | Registered in Beijing, China |
+| Hegemon | hegemon.ai | **TAKEN** | Registered in Denmark |
+| Phronesis | phronesis.ai | **TAKEN** | Private registration via NameCheap |
+| Demiurge | demiurge.ai | **TAKEN** | Private registration via NameCheap |
+| Noesis | noesis.ai | **TAKEN** | Via MarkMonitor (corporate) |
+| Ergon | ergon.ai | **TAKEN** | Registered in EU |
+| Praxis | praxis.ai | **TAKEN** | Registered |
+| Taxis | taxis.ai | **TAKEN** | Registered |
+| Moirai | moirai.ai | **TAKEN** | Via InternetX |
+| Horae | horae.ai | **TAKEN** | Via InternetX |
+| Musubi | musubi.ai | **TAKEN** | Via Gandi |
+| Norns | norns.ai | **TAKEN** | Via NameCheap |
+| Vinculum | vinculum.ai | **TAKEN** | Via NameCheap |
+
+### Other Known Conflicts (Brand/Product)
 
 | Name | Reason | Conflict |
 |------|--------|----------|
