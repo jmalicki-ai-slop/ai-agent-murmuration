@@ -3,6 +3,8 @@
 //! This module provides automatic agent type selection based on task characteristics
 //! and context.
 
+#![allow(dead_code)] // Selection functions are for future use
+
 use crate::agent::AgentType;
 
 /// Hints for agent selection based on task content
@@ -102,7 +104,10 @@ pub fn select_with_hints(task: &str, hints: &TaskHints) -> AgentType {
     }
 
     // Find the highest score
-    let max_score = impl_score.max(test_score).max(review_score).max(coord_score);
+    let max_score = impl_score
+        .max(test_score)
+        .max(review_score)
+        .max(coord_score);
 
     if max_score == 0 {
         // No keywords matched, default to Implement
@@ -123,7 +128,10 @@ pub fn select_with_hints(task: &str, hints: &TaskHints) -> AgentType {
 
 /// Count how many keywords match in the task
 fn count_matches(task: &str, keywords: &[String]) -> usize {
-    keywords.iter().filter(|kw| task.contains(kw.as_str())).count()
+    keywords
+        .iter()
+        .filter(|kw| task.contains(kw.as_str()))
+        .count()
 }
 
 /// Infer agent type from file patterns
@@ -173,14 +181,20 @@ mod tests {
 
     #[test]
     fn test_select_implement() {
-        assert_eq!(select_agent_type("Implement feature X"), AgentType::Implement);
+        assert_eq!(
+            select_agent_type("Implement feature X"),
+            AgentType::Implement
+        );
         assert_eq!(select_agent_type("Add new button"), AgentType::Implement);
         assert_eq!(select_agent_type("Fix the login bug"), AgentType::Implement);
     }
 
     #[test]
     fn test_select_test() {
-        assert_eq!(select_agent_type("Write tests for feature X"), AgentType::Test);
+        assert_eq!(
+            select_agent_type("Write tests for feature X"),
+            AgentType::Test
+        );
         assert_eq!(select_agent_type("Add test coverage"), AgentType::Test);
         assert_eq!(select_agent_type("Run the test suite"), AgentType::Test);
     }
@@ -188,15 +202,27 @@ mod tests {
     #[test]
     fn test_select_review() {
         assert_eq!(select_agent_type("Review the changes"), AgentType::Review);
-        assert_eq!(select_agent_type("Provide feedback on PR"), AgentType::Review);
+        assert_eq!(
+            select_agent_type("Provide feedback on PR"),
+            AgentType::Review
+        );
         assert_eq!(select_agent_type("Code review"), AgentType::Review);
     }
 
     #[test]
     fn test_select_coordinator() {
-        assert_eq!(select_agent_type("Coordinate the implementation across modules"), AgentType::Coordinator);
-        assert_eq!(select_agent_type("Orchestrate the multi-phase deployment"), AgentType::Coordinator);
-        assert_eq!(select_agent_type("Plan and delegate the work"), AgentType::Coordinator);
+        assert_eq!(
+            select_agent_type("Coordinate the implementation across modules"),
+            AgentType::Coordinator
+        );
+        assert_eq!(
+            select_agent_type("Orchestrate the multi-phase deployment"),
+            AgentType::Coordinator
+        );
+        assert_eq!(
+            select_agent_type("Plan and delegate the work"),
+            AgentType::Coordinator
+        );
     }
 
     #[test]
@@ -239,6 +265,9 @@ mod tests {
     #[test]
     fn test_explicit_write_test() {
         // "write test" should always be Test, even with other keywords
-        assert_eq!(select_agent_type("Implement and write tests"), AgentType::Test);
+        assert_eq!(
+            select_agent_type("Implement and write tests"),
+            AgentType::Test
+        );
     }
 }
