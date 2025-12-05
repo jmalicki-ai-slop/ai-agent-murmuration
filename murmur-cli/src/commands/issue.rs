@@ -70,7 +70,12 @@ impl From<StateFilter> for Option<IssueState> {
 
 impl IssueArgs {
     /// Execute the issue command
-    pub async fn execute(&self, verbose: bool, repo: Option<&str>) -> anyhow::Result<()> {
+    pub async fn execute(
+        &self,
+        verbose: bool,
+        no_emoji: bool,
+        repo: Option<&str>,
+    ) -> anyhow::Result<()> {
         match &self.command {
             IssueCommand::List {
                 state,
@@ -92,9 +97,18 @@ impl IssueArgs {
                 repo: cmd_repo,
             } => {
                 let repo_ref = cmd_repo.as_deref().or(repo);
-                show_deps(*number, repo_ref, verbose).await
+                show_deps(*number, repo_ref, verbose, no_emoji).await
             }
         }
+    }
+}
+
+/// Get emoji or ASCII alternative based on no_emoji flag
+fn emoji<'a>(no_emoji: bool, emoji_char: &'a str, ascii_alt: &'a str) -> &'a str {
+    if no_emoji {
+        ascii_alt
+    } else {
+        emoji_char
     }
 }
 
@@ -286,7 +300,12 @@ async fn show_issue(number: u64, repo: Option<&str>, verbose: bool) -> anyhow::R
     Ok(())
 }
 
-async fn show_deps(number: Option<u64>, repo: Option<&str>, verbose: bool) -> anyhow::Result<()> {
+async fn show_deps(
+    number: Option<u64>,
+    repo: Option<&str>,
+    verbose: bool,
+    no_emoji: bool,
+) -> anyhow::Result<()> {
     let client = get_client(repo)?;
 
     if verbose {
@@ -308,7 +327,10 @@ async fn show_deps(number: Option<u64>, repo: Option<&str>, verbose: bool) -> an
     let graph = match DependencyGraph::from_issues(&issues) {
         Ok(g) => g,
         Err(murmur_github::Error::InvalidDependencyRefs(refs)) => {
-            println!("❌ Invalid dependency references found in issues:");
+            println!(
+                "{} Invalid dependency references found in issues:",
+                emoji(no_emoji, "❌", "[ERROR]")
+            );
             for r in refs {
                 println!("  - \"{}\"", r);
             }
@@ -322,7 +344,10 @@ async fn show_deps(number: Option<u64>, repo: Option<&str>, verbose: bool) -> an
     // Check for cycles
     let cycles = graph.find_cycles();
     if !cycles.is_empty() {
-        println!("⚠️  Circular dependencies detected:");
+        println!(
+            "{}  Circular dependencies detected:",
+            emoji(no_emoji, "⚠️", "[WARN]")
+        );
         for cycle in &cycles {
             let cycle_str = cycle
                 .iter()
@@ -355,9 +380,9 @@ async fn show_deps(number: Option<u64>, repo: Option<&str>, verbose: bool) -> an
                         .map(|i| i.title.as_str())
                         .unwrap_or("(unknown)");
                     let status = if graph.ready.contains(dep) {
-                        "✅"
+                        emoji(no_emoji, "✅", "[OK]")
                     } else {
-                        "❌"
+                        emoji(no_emoji, "❌", "[PEND]")
                     };
                     println!("    {} #{}: {}", status, dep, issue_title);
                 }

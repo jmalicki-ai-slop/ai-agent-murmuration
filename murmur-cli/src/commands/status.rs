@@ -18,7 +18,7 @@ pub struct StatusArgs {
 
 impl StatusArgs {
     /// Execute the status command
-    pub async fn execute(&self, verbose: bool) -> anyhow::Result<()> {
+    pub async fn execute(&self, verbose: bool, no_emoji: bool) -> anyhow::Result<()> {
         // Open database
         let db = Database::open().map_err(|e| anyhow::anyhow!("Failed to open database: {}", e))?;
         let repo = AgentRunRepository::new(&db);
@@ -32,11 +32,19 @@ impl StatusArgs {
         let mut last_activity: HashMap<i64, chrono::DateTime<Utc>> = HashMap::new();
         for run in &running {
             if let Some(run_id) = run.id {
-                if let Ok(conn) =
-                    murmur_db::ConversationRepository::new(&db).find_by_agent_run(run_id)
-                {
-                    if let Some(last_log) = conn.last() {
-                        last_activity.insert(run_id, last_log.timestamp);
+                match murmur_db::ConversationRepository::new(&db).find_by_agent_run(run_id) {
+                    Ok(conn) => {
+                        if let Some(last_log) = conn.last() {
+                            last_activity.insert(run_id, last_log.timestamp);
+                        }
+                    }
+                    Err(e) => {
+                        if self.verbose || verbose {
+                            eprintln!(
+                                "Warning: Failed to retrieve conversation log for run {}: {}",
+                                run_id, e
+                            );
+                        }
                     }
                 }
             }
@@ -190,7 +198,17 @@ impl StatusArgs {
                         "N/A".to_string()
                     };
 
-                    let status_icon = if run.is_successful() { "✅" } else { "❌" };
+                    let status_icon = if no_emoji {
+                        if run.is_successful() {
+                            "[OK]"
+                        } else {
+                            "[FAIL]"
+                        }
+                    } else if run.is_successful() {
+                        "✅"
+                    } else {
+                        "❌"
+                    };
                     let exit_code = run.exit_code.unwrap_or(-1);
 
                     println!(

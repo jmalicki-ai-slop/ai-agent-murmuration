@@ -44,6 +44,7 @@ impl WorkArgs {
     pub async fn execute(
         &self,
         verbose: bool,
+        no_emoji: bool,
         config: &Config,
         repo: Option<&str>,
     ) -> anyhow::Result<()> {
@@ -94,7 +95,10 @@ impl WorkArgs {
                     println!();
 
                     if resumable.message_count == 0 {
-                        println!("⚠️  No conversation history found. Starting fresh instead.");
+                        println!(
+                            "{}  No conversation history found. Starting fresh instead.",
+                            emoji(no_emoji, "⚠️", "[WARN]")
+                        );
                         println!();
                     } else {
                         // Reconstruct conversation
@@ -127,7 +131,7 @@ impl WorkArgs {
                         // TODO: Use resume_prompt instead of original prompt when spawning agent
                         // This will require passing conversation history to Claude Code
                         // For now, just inform the user
-                        println!("⚠️  Resume functionality detected previous session but will start fresh.");
+                        println!("{}  Resume functionality detected previous session but will start fresh.", emoji(no_emoji, "⚠️", "[WARN]"));
                         println!("Full resume with conversation history will be implemented in a future update.");
                         println!();
                     }
@@ -145,7 +149,10 @@ impl WorkArgs {
             let deps = match IssueDependencies::parse(&issue.body) {
                 Ok(deps) => deps,
                 Err(murmur_github::Error::InvalidDependencyRefs(refs)) => {
-                    println!("❌ Invalid dependency references found:");
+                    println!(
+                        "{} Invalid dependency references found:",
+                        emoji(no_emoji, "❌", "[ERROR]")
+                    );
                     for invalid in &refs {
                         println!(
                             "  - \"{}\" (must be #123 or owner/repo#123 format)",
@@ -168,7 +175,11 @@ impl WorkArgs {
 
                 for dep_ref in deps.depends_on.iter().chain(deps.blocked_by.iter()) {
                     if !dep_ref.is_local() {
-                        println!("  ⚠️  {} (cross-repo, skipped)", dep_ref);
+                        println!(
+                            "  {}  {} (cross-repo, skipped)",
+                            emoji(no_emoji, "⚠️", "[WARN]"),
+                            dep_ref
+                        );
                         continue;
                     }
 
@@ -182,17 +193,30 @@ impl WorkArgs {
 
                     match status {
                         DependencyStatus::Complete => {
-                            println!("  ✅ #{}: {} [complete]", dep_ref.number, title);
+                            println!(
+                                "  {} #{}: {} [complete]",
+                                emoji(no_emoji, "✅", "[OK]"),
+                                dep_ref.number,
+                                title
+                            );
                         }
                         DependencyStatus::InProgress { pr_number } => {
                             println!(
-                                "  🔄 #{}: {} [PR #{} open]",
-                                dep_ref.number, title, pr_number
+                                "  {} #{}: {} [PR #{} open]",
+                                emoji(no_emoji, "🔄", "[WIP]"),
+                                dep_ref.number,
+                                title,
+                                pr_number
                             );
                             blocking.push((dep_ref.number, title.to_string(), Some(pr_number)));
                         }
                         DependencyStatus::Pending => {
-                            println!("  ❌ #{}: {} [not started]", dep_ref.number, title);
+                            println!(
+                                "  {} #{}: {} [not started]",
+                                emoji(no_emoji, "❌", "[PEND]"),
+                                dep_ref.number,
+                                title
+                            );
                             blocking.push((dep_ref.number, title.to_string(), None));
                         }
                     }
@@ -202,7 +226,8 @@ impl WorkArgs {
 
                 if !blocking.is_empty() {
                     println!(
-                        "❌ Blocked by {} unmet dependenc{}.",
+                        "{} Blocked by {} unmet dependenc{}.",
+                        emoji(no_emoji, "❌", "[ERROR]"),
                         blocking.len(),
                         if blocking.len() == 1 { "y" } else { "ies" }
                     );
@@ -228,17 +253,27 @@ impl WorkArgs {
                     return Ok(());
                 }
 
-                println!("✅ All dependencies satisfied!");
+                println!(
+                    "{} All dependencies satisfied!",
+                    emoji(no_emoji, "✅", "[OK]")
+                );
                 println!();
             }
         } else {
-            println!("⚠️  Skipping dependency check (--force)");
+            println!(
+                "{}  Skipping dependency check (--force)",
+                emoji(no_emoji, "⚠️", "[WARN]")
+            );
             println!();
         }
 
         // Check if issue is already closed
         if issue.state == IssueState::Closed {
-            println!("⚠️  Issue #{} is already closed.", self.issue);
+            println!(
+                "{}  Issue #{} is already closed.",
+                emoji(no_emoji, "⚠️", "[WARN]"),
+                self.issue
+            );
             if !self.force {
                 println!("Use --force to work on it anyway.");
                 return Ok(());
@@ -407,12 +442,19 @@ impl WorkArgs {
 
         let mut handle = spawner.spawn(&prompt, &info.path).await?;
 
-        // Get PID and update the database record
+        // Get PID and update the database record immediately to avoid race condition
         if let Some(pid) = handle.pid() {
             agent_run.pid = Some(pid as i32);
+            // Update database with PID before doing anything else
             if let Err(e) = agent_repo.update(&agent_run) {
                 eprintln!("Warning: Failed to update agent run with PID: {}", e);
             }
+
+            if verbose {
+                println!("Agent PID: {}", pid);
+            }
+        } else {
+            eprintln!("Warning: Could not retrieve agent PID");
         }
 
         // Stream output with database logging
@@ -455,12 +497,15 @@ impl WorkArgs {
 
         println!();
         if status.success() {
-            println!("✅ Agent completed successfully");
+            println!(
+                "{} Agent completed successfully",
+                emoji(no_emoji, "✅", "[OK]")
+            );
 
             // Auto-push and auto-PR if configured
             if config.workflow.auto_push || config.workflow.auto_pr {
                 println!();
-                self.handle_post_completion(config, &info, &branch_name, &issue.title, verbose)
+                self.handle_post_completion(config, &info, &branch_name, &issue.title, verbose, no_emoji)
                     .await?;
             } else {
                 println!();
@@ -473,7 +518,11 @@ impl WorkArgs {
                 );
             }
         } else {
-            println!("❌ Agent exited with code: {}", status.code().unwrap_or(-1));
+            println!(
+                "{} Agent exited with code: {}",
+                emoji(no_emoji, "❌", "[FAIL]"),
+                status.code().unwrap_or(-1)
+            );
             println!();
             println!("Next steps:");
             println!("  1. Review changes: cd {}", info.path.display());
@@ -491,6 +540,7 @@ impl WorkArgs {
         branch_name: &str,
         issue_title: &str,
         verbose: bool,
+        no_emoji: bool,
     ) -> anyhow::Result<()> {
         use std::process::Command;
 
@@ -653,6 +703,15 @@ impl WorkArgs {
         }
 
         Ok(())
+    }
+}
+
+/// Get emoji or ASCII alternative based on no_emoji flag
+fn emoji<'a>(no_emoji: bool, emoji_char: &'a str, ascii_alt: &'a str) -> &'a str {
+    if no_emoji {
+        ascii_alt
+    } else {
+        emoji_char
     }
 }
 
