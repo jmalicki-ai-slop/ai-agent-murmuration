@@ -2,7 +2,7 @@
 
 use clap::Args;
 use murmur_core::{
-    AgentSpawner, BranchingOptions, Config, GitRepo, OutputStreamer, WorktreeMetadata,
+    AgentSpawner, BranchingOptions, Config, GitRepo, OutputStreamer, Secrets, WorktreeMetadata,
     WorktreeOptions,
 };
 use murmur_db::{
@@ -322,8 +322,16 @@ impl WorkArgs {
             println!("Agent run ID: {}", run_id);
         }
 
-        // Spawn agent
-        let spawner = AgentSpawner::from_config(config.agent.clone());
+        // Spawn agent with GitHub token if available
+        let mut spawner = AgentSpawner::from_config(config.agent.clone());
+
+        // Pass GitHub token to agent via environment variable
+        if let Ok(secrets) = Secrets::load() {
+            if let Some(token) = secrets.github_token() {
+                spawner = spawner.with_env("GITHUB_TOKEN", token);
+            }
+        }
+
         let mut handle = spawner.spawn(&prompt, &info.path).await?;
 
         // Stream output with database logging

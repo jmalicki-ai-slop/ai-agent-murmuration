@@ -59,6 +59,8 @@ impl AgentHandle {
 pub struct AgentSpawner {
     /// Agent configuration
     config: AgentConfig,
+    /// Environment variables to pass to spawned agents
+    env_vars: Vec<(String, String)>,
 }
 
 impl AgentSpawner {
@@ -69,7 +71,10 @@ impl AgentSpawner {
 
     /// Create an agent spawner from configuration
     pub fn from_config(config: AgentConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            env_vars: Vec::new(),
+        }
     }
 
     /// Set a custom path to the claude executable
@@ -81,6 +86,12 @@ impl AgentSpawner {
     /// Set the model to use
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.config.model = Some(model.into());
+        self
+    }
+
+    /// Add an environment variable to pass to the spawned agent
+    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.env_vars.push((key.into(), value.into()));
         self
     }
 
@@ -124,6 +135,11 @@ impl AgentSpawner {
         // Add model flag if specified
         if let Some(ref model) = self.config.model {
             cmd.arg("--model").arg(model);
+        }
+
+        // Add environment variables
+        for (key, value) in &self.env_vars {
+            cmd.env(key, value);
         }
 
         cmd.arg(&prompt)
