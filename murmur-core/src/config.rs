@@ -12,22 +12,65 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Error, Result};
 
+/// Backend type for agent execution
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Backend {
+    Claude,
+    Cursor,
+}
+
+/// Per-agent-type configuration overrides
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct TypeConfig {
+    /// Override backend for this agent type
+    pub backend: Option<Backend>,
+
+    /// Override model for this agent type
+    pub model: Option<String>,
+}
+
 /// Agent-related configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct AgentConfig {
+    /// Global default backend
+    pub backend: Backend,
+
+    /// Global default model
+    pub model: Option<String>,
+
     /// Path to the claude executable
     pub claude_path: String,
 
-    /// Model to use for Claude
-    pub model: Option<String>,
+    /// Path to the cursor executable (optional)
+    pub cursor_path: Option<String>,
+
+    /// Configuration overrides for implement agent type
+    pub implement: Option<TypeConfig>,
+
+    /// Configuration overrides for test agent type
+    pub test: Option<TypeConfig>,
+
+    /// Configuration overrides for review agent type
+    pub review: Option<TypeConfig>,
+
+    /// Configuration overrides for coordinator agent type
+    pub coordinator: Option<TypeConfig>,
 }
 
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
-            claude_path: "claude".to_string(),
+            backend: Backend::Claude,
             model: None, // Let claude use its default
+            claude_path: "claude".to_string(),
+            cursor_path: None,
+            implement: None,
+            test: None,
+            review: None,
+            coordinator: None,
         }
     }
 }
@@ -144,8 +187,14 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
+        assert_eq!(config.agent.backend, Backend::Claude);
         assert_eq!(config.agent.claude_path, "claude");
         assert!(config.agent.model.is_none());
+        assert!(config.agent.cursor_path.is_none());
+        assert!(config.agent.implement.is_none());
+        assert!(config.agent.test.is_none());
+        assert!(config.agent.review.is_none());
+        assert!(config.agent.coordinator.is_none());
     }
 
     #[test]
@@ -188,5 +237,158 @@ model = "opus"
         // claude_path should use default
         assert_eq!(config.agent.claude_path, "claude");
         assert_eq!(config.agent.model, Some("opus".to_string()));
+    }
+
+    #[test]
+    fn test_backend_enum_deserialization() {
+        let toml = r#"
+[agent]
+backend = "claude"
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.agent.backend, Backend::Claude);
+
+        let toml = r#"
+[agent]
+backend = "cursor"
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.agent.backend, Backend::Cursor);
+    }
+
+    #[test]
+    fn test_per_type_config() {
+        let toml = r#"
+[agent]
+backend = "claude"
+model = "claude-sonnet-4-20250514"
+claude_path = "claude"
+cursor_path = "cursor"
+
+[agent.implement]
+model = "claude-sonnet-4-20250514"
+
+[agent.review]
+model = "claude-haiku-4-20250514"
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+
+        // Global config
+        assert_eq!(config.agent.backend, Backend::Claude);
+        assert_eq!(
+            config.agent.model,
+            Some("claude-sonnet-4-20250514".to_string())
+        );
+        assert_eq!(config.agent.claude_path, "claude");
+        assert_eq!(config.agent.cursor_path, Some("cursor".to_string()));
+
+        // Implement type config
+        assert!(config.agent.implement.is_some());
+        let implement = config.agent.implement.as_ref().unwrap();
+        assert_eq!(
+            implement.model,
+            Some("claude-sonnet-4-20250514".to_string())
+        );
+        assert!(implement.backend.is_none());
+
+        // Review type config
+        assert!(config.agent.review.is_some());
+        let review = config.agent.review.as_ref().unwrap();
+        assert_eq!(review.model, Some("claude-haiku-4-20250514".to_string()));
+        assert!(review.backend.is_none());
+
+        // Unspecified types should be None
+        assert!(config.agent.test.is_none());
+        assert!(config.agent.coordinator.is_none());
+    }
+
+    #[test]
+    fn test_per_type_backend_override() {
+        let toml = r#"
+[agent]
+backend = "claude"
+claude_path = "claude"
+cursor_path = "/usr/local/bin/cursor"
+
+[agent.implement]
+backend = "cursor"
+model = "gpt-4"
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert_eq!(config.agent.backend, Backend::Claude);
+
+        let implement = config.agent.implement.as_ref().unwrap();
+        assert_eq!(implement.backend, Some(Backend::Cursor));
+        assert_eq!(implement.model, Some("gpt-4".to_string()));
+    }
+
+    #[test]
+    fn test_typeconfig_default() {
+        let type_config = TypeConfig::default();
+        assert!(type_config.backend.is_none());
+        assert!(type_config.model.is_none());
+    }
+
+    #[test]
+    fn test_empty_per_type_sections() {
+        let toml = r#"
+[agent]
+backend = "claude"
+
+[agent.implement]
+
+[agent.test]
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+
+        // Empty sections should parse as Some with default (None) values
+        assert!(config.agent.implement.is_some());
+        assert!(config.agent.test.is_some());
+
+        let implement = config.agent.implement.as_ref().unwrap();
+        assert!(implement.backend.is_none());
+        assert!(implement.model.is_none());
+    }
+
+    #[test]
+    fn test_issue_125_example() {
+        // Test the exact example from issue #125
+        let toml = r#"
+[agent]
+backend = "claude"
+model = "claude-sonnet-4-20250514"
+claude_path = "claude"
+cursor_path = "cursor"
+
+[agent.implement]
+model = "claude-sonnet-4-20250514"
+
+[agent.review]
+model = "claude-haiku-4-20250514"
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+
+        // Verify global config
+        assert_eq!(config.agent.backend, Backend::Claude);
+        assert_eq!(
+            config.agent.model,
+            Some("claude-sonnet-4-20250514".to_string())
+        );
+        assert_eq!(config.agent.claude_path, "claude");
+        assert_eq!(config.agent.cursor_path, Some("cursor".to_string()));
+
+        // Verify implement config
+        let implement = config.agent.implement.as_ref().unwrap();
+        assert_eq!(
+            implement.model,
+            Some("claude-sonnet-4-20250514".to_string())
+        );
+        assert!(implement.backend.is_none());
+
+        // Verify review config
+        let review = config.agent.review.as_ref().unwrap();
+        assert_eq!(review.model, Some("claude-haiku-4-20250514".to_string()));
+        assert!(review.backend.is_none());
     }
 }
