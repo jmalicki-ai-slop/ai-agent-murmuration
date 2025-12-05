@@ -322,6 +322,9 @@ impl WorkArgs {
             println!("Agent run ID: {}", run_id);
         }
 
+        // Create .murmur directory for agent outputs
+        std::fs::create_dir_all(info.path.join(".murmur")).ok();
+
         // Spawn agent with GitHub token if available
         let mut spawner = AgentSpawner::from_config(config.agent.clone());
 
@@ -370,10 +373,21 @@ impl WorkArgs {
         println!();
         println!("Next steps:");
         println!("  1. Review changes: cd {}", info.path.display());
-        println!(
-            "  2. Create PR: gh pr create --title \"Fixes #{}\"",
-            self.issue
-        );
+
+        // Check if PR description file exists
+        let pr_desc_path = info.path.join(".murmur").join("pr-description.md");
+        if pr_desc_path.exists() {
+            println!(
+                "  2. Create PR: gh pr create --body-file {}",
+                pr_desc_path.display()
+            );
+        } else {
+            println!(
+                "  2. Create PR: gh pr create --title \"Fixes #{}\"",
+                self.issue
+            );
+            println!("     (Note: PR description file not found at .murmur/pr-description.md)");
+        }
 
         Ok(())
     }
@@ -401,7 +415,19 @@ fn build_prompt_from_issue(issue: &murmur_github::Issue) -> String {
         prompt.push_str("\n\n");
     }
 
-    prompt.push_str("Please implement this issue. When done, provide a summary of changes made.");
+    prompt.push_str("Please implement this issue.\n\n");
+    prompt.push_str("IMPORTANT: Before completing your work, you MUST:\n");
+    prompt.push_str("1. Write a `.murmur/pr-description.md` file containing:\n");
+    prompt.push_str("   - A clear title for the PR\n");
+    prompt.push_str("   - A summary of the changes made\n");
+    prompt.push_str("   - List of key files modified\n");
+    prompt.push_str("   - Test plan or verification steps\n");
+    prompt.push_str(&format!(
+        "   - Reference to close this issue: 'Closes #{}'\n",
+        issue.number
+    ));
+    prompt.push_str("2. Ensure all changes are committed to git\n\n");
+    prompt.push_str("After writing the PR description file, provide a summary of your changes.");
 
     prompt
 }
