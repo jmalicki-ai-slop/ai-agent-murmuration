@@ -351,6 +351,43 @@ impl TddState {
     }
 
     /// Transition to the next phase
+    ///
+    /// # Validation Responsibility
+    ///
+    /// This is a low-level state transition method that **trusts the caller** to perform
+    /// validation before advancing. Higher-level orchestrators (like workflow coordinators)
+    /// are responsible for:
+    ///
+    /// 1. Consulting [`current_validation()`](Self::current_validation) to understand what the current phase requires
+    /// 2. Validating that those requirements are met (tests pass/fail appropriately, files exist, etc.)
+    /// 3. Only calling `advance()` when it's safe to proceed
+    ///
+    /// The `success` flag is recorded in the transition history for tracking purposes, but
+    /// **does not gate the transition** - the phase will advance regardless. This design
+    /// allows the state machine to remain simple while delegating validation logic to
+    /// higher-level components that understand the project context.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use murmur_core::workflow::tdd::{TddState, TddPhase};
+    /// # use std::path::PathBuf;
+    /// let mut state = TddState::new("feature", PathBuf::from("/tmp"));
+    ///
+    /// // Good: Orchestrator checks validation before advancing
+    /// let validation = state.current_validation();
+    /// if validation.requires_test_failure {
+    ///     // Run tests and verify they fail
+    ///     let tests_failed = run_tests_and_check_failure();
+    ///     if tests_failed {
+    ///         state.advance(true, Some("Tests failed as expected".into()));
+    ///     } else {
+    ///         // Use retry_tests() to go back instead
+    ///         state.retry_tests(Some("Tests passed unexpectedly".into()));
+    ///     }
+    /// }
+    /// # fn run_tests_and_check_failure() -> bool { true }
+    /// ```
     pub fn advance(&mut self, success: bool, message: Option<String>) -> Option<TddPhase> {
         let from = self.phase;
         let to = self.compute_next_phase();
