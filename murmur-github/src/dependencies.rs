@@ -307,10 +307,13 @@ impl DependencyGraph {
         let mut visited = HashSet::new();
         let mut temp_visited = HashSet::new();
 
+        // Collect all known nodes: from dependencies, dependents, ready, and blocked sets
         let all_nodes: HashSet<u64> = self
             .dependencies
             .keys()
             .chain(self.dependents.keys())
+            .chain(self.ready.iter())
+            .chain(self.blocked.iter())
             .copied()
             .collect();
 
@@ -362,10 +365,81 @@ impl DependencyGraph {
 /// Parse "Depends on #X" and "Depends on owner/repo#X" patterns
 /// Returns (valid_refs, invalid_refs)
 fn parse_depends_pattern(body: &str) -> (Vec<IssueRef>, Vec<String>) {
-    parse_issue_refs(
+    let (mut refs, invalid) = parse_issue_refs(
         body,
         &["Depends on", "depends on", "Depend on", "depend on"],
-    )
+    );
+
+    // Also parse checkbox-style dependencies in ## Dependencies section
+    // Format: - [ ] #N or - [x] #N
+    let checkbox_deps = parse_checkbox_dependencies(body);
+    for dep_ref in checkbox_deps {
+        if !refs.contains(&dep_ref) {
+            refs.push(dep_ref);
+        }
+    }
+
+    (refs, invalid)
+}
+
+/// Parse checkbox-style dependencies from a Dependencies section
+/// Looks for patterns like:
+/// ## Dependencies
+/// - [ ] #36 Some description
+/// - [x] #37 Another description
+fn parse_checkbox_dependencies(body: &str) -> Vec<IssueRef> {
+    let mut deps = Vec::new();
+
+    // Find the Dependencies section
+    let deps_section_start = body
+        .find("## Dependencies")
+        .or_else(|| body.find("## dependencies"))
+        .or_else(|| body.find("### Dependencies"))
+        .or_else(|| body.find("### dependencies"));
+
+    if let Some(start) = deps_section_start {
+        let section = &body[start..];
+
+        // Find the end of the dependencies section (next ## header or end of content)
+        let section_end = section[3..] // Skip past "## "
+            .find("\n##")
+            .map(|i| i + 3)
+            .unwrap_or(section.len());
+
+        let deps_content = &section[..section_end];
+
+        // Parse checkbox lines
+        for line in deps_content.lines() {
+            let trimmed = line.trim();
+
+            // Check for checkbox pattern: - [ ] #N or - [x] #N
+            if let Some(rest) = trimmed.strip_prefix("- [") {
+                let after_checkbox = if rest.starts_with("x] ") || rest.starts_with("X] ") {
+                    &rest[3..]
+                } else if let Some(stripped) = rest.strip_prefix(" ] ") {
+                    stripped
+                } else {
+                    continue;
+                };
+
+                // Look for issue reference
+                if let Some(issue_part) = after_checkbox.strip_prefix('#') {
+                    let num_str: String = issue_part
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect();
+                    if let Ok(number) = num_str.parse::<u64>() {
+                        let issue_ref = IssueRef::local(number);
+                        if !deps.contains(&issue_ref) {
+                            deps.push(issue_ref);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    deps
 }
 
 /// Parse "Blocked by #X" patterns
@@ -467,9 +541,146 @@ fn parse_single_issue_ref(s: &str) -> Option<IssueRef> {
     None
 }
 
+/// Parse child issues from an epic body
+///
+/// Looks for checkbox patterns like:
+/// - `- [ ] #123` (unchecked)
+/// - `- [x] #123` (checked)
+/// - `- [X] #123` (checked)
+///
+/// Returns a list of (issue_number, is_completed) tuples
+pub fn parse_epic_children(body: &str) -> Vec<(u64, bool)> {
+    let mut children = Vec::new();
+
+    // Pattern: - [ ] #N or - [x] #N or - [X] #N
+    for line in body.lines() {
+        let trimmed = line.trim();
+
+        // Check for checkbox pattern
+        if let Some(rest) = trimmed.strip_prefix("- [") {
+            // Parse checkbox state
+            let (is_checked, after_checkbox) = if let Some(r) = rest.strip_prefix("x] ") {
+                (true, r)
+            } else if let Some(r) = rest.strip_prefix("X] ") {
+                (true, r)
+            } else if let Some(r) = rest.strip_prefix(" ] ") {
+                (false, r)
+            } else {
+                continue;
+            };
+
+            // Look for issue reference
+            if let Some(issue_part) = after_checkbox.strip_prefix('#') {
+                // Extract the number
+                let num_str: String = issue_part
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect();
+                if let Ok(number) = num_str.parse::<u64>() {
+                    if !children.iter().any(|(n, _)| *n == number) {
+                        children.push((number, is_checked));
+                    }
+                }
+            }
+        }
+    }
+
+    children
+}
+
+/// Information about an epic's child issues
+#[derive(Debug, Clone)]
+pub struct EpicChildren {
+    /// All child issue numbers with their completion status
+    pub children: Vec<(u64, bool)>,
+    /// Issue numbers that are not yet completed
+    pub pending: Vec<u64>,
+    /// Issue numbers that are completed
+    pub completed: Vec<u64>,
+}
+
+impl EpicChildren {
+    /// Parse child issues from an epic issue body
+    pub fn from_body(body: &str) -> Self {
+        let children = parse_epic_children(body);
+        let pending: Vec<u64> = children
+            .iter()
+            .filter(|(_, done)| !done)
+            .map(|(n, _)| *n)
+            .collect();
+        let completed: Vec<u64> = children
+            .iter()
+            .filter(|(_, done)| *done)
+            .map(|(n, _)| *n)
+            .collect();
+
+        Self {
+            children,
+            pending,
+            completed,
+        }
+    }
+
+    /// Check if there are pending child issues
+    pub fn has_pending(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
+    /// Get all child issue numbers (both pending and completed)
+    pub fn all_numbers(&self) -> Vec<u64> {
+        self.children.iter().map(|(n, _)| *n).collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_epic_children() {
+        let body = r#"
+## Child Issues
+
+- [ ] #119 DAG orchestration
+- [x] #120 Already done
+- [ ] #121 Another task
+- [X] #122 Also done
+"#;
+
+        let children = parse_epic_children(body);
+        assert_eq!(children.len(), 4);
+        assert_eq!(children[0], (119, false));
+        assert_eq!(children[1], (120, true));
+        assert_eq!(children[2], (121, false));
+        assert_eq!(children[3], (122, true));
+    }
+
+    #[test]
+    fn test_parse_epic_children_with_text() {
+        let body = r#"
+- [ ] #100 Some description text
+- [x] #101 Completed with description
+"#;
+
+        let children = parse_epic_children(body);
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0], (100, false));
+        assert_eq!(children[1], (101, true));
+    }
+
+    #[test]
+    fn test_epic_children_struct() {
+        let body = r#"
+- [ ] #1
+- [x] #2
+- [ ] #3
+"#;
+
+        let epic = EpicChildren::from_body(body);
+        assert_eq!(epic.pending, vec![1, 3]);
+        assert_eq!(epic.completed, vec![2]);
+        assert!(epic.has_pending());
+    }
 
     #[test]
     fn test_parse_local_ref() {
@@ -503,6 +714,40 @@ mod tests {
         assert_eq!(deps.depends_on.len(), 2);
         assert_eq!(deps.depends_on[0].number, 15);
         assert_eq!(deps.depends_on[1].number, 16);
+    }
+
+    #[test]
+    fn test_parse_checkbox_dependencies() {
+        let body = r#"
+## Description
+
+Some issue description.
+
+## Dependencies
+
+- [ ] #36 Workflow state machine
+- [x] #37 Already completed dep
+"#;
+
+        let deps = IssueDependencies::parse(body).unwrap();
+        assert_eq!(deps.depends_on.len(), 2);
+        assert!(deps.depends_on.iter().any(|d| d.number == 36));
+        assert!(deps.depends_on.iter().any(|d| d.number == 37));
+    }
+
+    #[test]
+    fn test_parse_mixed_dependency_formats() {
+        let body = r#"
+## Dependencies
+
+Depends on #10
+- [ ] #36 Checkbox dep
+"#;
+
+        let deps = IssueDependencies::parse(body).unwrap();
+        assert_eq!(deps.depends_on.len(), 2);
+        assert!(deps.depends_on.iter().any(|d| d.number == 10));
+        assert!(deps.depends_on.iter().any(|d| d.number == 36));
     }
 
     #[test]

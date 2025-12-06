@@ -15,7 +15,7 @@ mod review;
 
 pub use client::GitHubClient;
 pub use create::{ImportOptions, ImportResult};
-pub use dependencies::{DependencyGraph, IssueDependencies, IssueRef};
+pub use dependencies::{DependencyGraph, EpicChildren, IssueDependencies, IssueRef};
 pub use error::{Error, Result};
 pub use issues::{Issue, IssueFilter, IssueState, SubIssuesSummary};
 pub use metadata::{parse_depends_on_links, IssueMetadata};

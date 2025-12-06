@@ -8,7 +8,9 @@ use clap::{Parser, Subcommand};
 use murmur_core::{Config, GitRepo, Secrets};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use commands::{AgentArgs, IssueArgs, RunArgs, StatusArgs, WorkArgs, WorktreeArgs};
+use commands::{
+    AgentArgs, IssueArgs, OrchestrateArgs, RunArgs, StatusArgs, WorkArgs, WorktreeArgs,
+};
 
 /// Try to detect the GitHub repo from the current directory
 fn detect_repo() -> Option<String> {
@@ -96,6 +98,10 @@ enum Commands {
     #[command(visible_alias = "w")]
     Work(WorkArgs),
 
+    /// Orchestrate multiple issues from an epic
+    #[command(visible_alias = "o")]
+    Orchestrate(OrchestrateArgs),
+
     /// Show status of running agents and worktrees
     #[command(visible_alias = "s")]
     Status(StatusArgs),
@@ -157,6 +163,12 @@ async fn main() -> anyhow::Result<()> {
                 .await?;
         }
         Some(Commands::Work(args)) => {
+            // Try to detect repo from current directory
+            let repo = detect_repo();
+            args.execute(cli.verbose, cli.no_emoji, &config, repo.as_deref())
+                .await?;
+        }
+        Some(Commands::Orchestrate(args)) => {
             // Try to detect repo from current directory
             let repo = detect_repo();
             args.execute(cli.verbose, cli.no_emoji, &config, repo.as_deref())
