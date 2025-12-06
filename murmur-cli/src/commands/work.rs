@@ -508,25 +508,27 @@ impl WorkArgs {
                 emoji(no_emoji, "✅", "[OK]")
             );
 
-            // Auto-push and auto-PR if configured
-            if config.workflow.auto_push || config.workflow.auto_pr {
+            // Auto-commit, auto-push and auto-PR if configured
+            if config.workflow.auto_commit || config.workflow.auto_push || config.workflow.auto_pr {
                 println!();
                 self.handle_post_completion(
                     config,
                     &info,
                     &branch_name,
-                    &issue.title,
+                    &issue,
                     verbose,
                     no_emoji,
+                    &client,
                 )
                 .await?;
             } else {
                 println!();
                 println!("Next steps:");
                 println!("  1. Review changes: cd {}", info.path.display());
-                println!("  2. Push branch: git push -u origin {}", branch_name);
+                println!("  2. Commit changes: git add . && git commit");
+                println!("  3. Push branch: git push -u origin {}", branch_name);
                 println!(
-                    "  3. Create PR: gh pr create --title \"Fixes #{}\"",
+                    "  4. Create PR: gh pr create --title \"Fixes #{}\"",
                     self.issue
                 );
             }
@@ -545,27 +547,133 @@ impl WorkArgs {
         Ok(())
     }
 
-    /// Handle post-completion tasks: push and PR creation
+    /// Handle post-completion tasks: commit, push, and PR creation
+    #[allow(clippy::too_many_arguments)]
     async fn handle_post_completion(
         &self,
         config: &Config,
         info: &murmur_core::WorktreeInfo,
         branch_name: &str,
-        issue_title: &str,
+        issue: &murmur_github::Issue,
         verbose: bool,
         no_emoji: bool,
+        _client: &GitHubClient,
     ) -> anyhow::Result<()> {
         use std::process::Command;
 
-        // Check if there are any commits to push
+        // Step 1: Check for uncommitted changes
         let status_output = Command::new("git")
             .args(["status", "--porcelain"])
             .current_dir(&info.path)
             .output()?;
 
-        let has_changes = !status_output.stdout.is_empty();
+        let has_uncommitted_changes = !status_output.stdout.is_empty();
 
-        // Get the default branch dynamically
+        // Step 2: Auto-commit if configured and there are uncommitted changes
+        if has_uncommitted_changes && config.workflow.auto_commit {
+            println!("Detected uncommitted changes. Committing...");
+
+            if verbose {
+                let changes = String::from_utf8_lossy(&status_output.stdout);
+                println!("Changes to commit:");
+                println!("{}", changes);
+            }
+
+            // Add all changes
+            let add_result = Command::new("git")
+                .args(["add", "."])
+                .current_dir(&info.path)
+                .output()?;
+
+            if !add_result.status.success() {
+                let stderr = String::from_utf8_lossy(&add_result.stderr);
+                eprintln!(
+                    "{}  Failed to stage changes:",
+                    emoji(no_emoji, "⚠️", "[WARN]")
+                );
+                eprintln!("{}", stderr);
+                return Ok(());
+            }
+
+            // Commit with a descriptive message
+            let commit_msg = format!("Implement issue #{}: {}", self.issue, issue.title);
+            let commit_result = Command::new("git")
+                .args(["commit", "-m", &commit_msg])
+                .current_dir(&info.path)
+                .output()?;
+
+            if !commit_result.status.success() {
+                let stderr = String::from_utf8_lossy(&commit_result.stderr);
+
+                // Check if pre-commit hooks modified files
+                if stderr.contains("modified") || stderr.contains("reformatted") {
+                    println!(
+                        "{}  Pre-commit hooks modified files. Retrying commit...",
+                        emoji(no_emoji, "🔄", "[INFO]")
+                    );
+
+                    if verbose {
+                        println!("Hook output:");
+                        println!("{}", stderr);
+                    }
+
+                    // Re-add all changes and retry commit
+                    let add_retry = Command::new("git")
+                        .args(["add", "."])
+                        .current_dir(&info.path)
+                        .output()?;
+
+                    if !add_retry.status.success() {
+                        eprintln!(
+                            "{}  Failed to re-stage changes after hooks:",
+                            emoji(no_emoji, "⚠️", "[WARN]")
+                        );
+                        return Ok(());
+                    }
+
+                    let commit_retry = Command::new("git")
+                        .args(["commit", "-m", &commit_msg])
+                        .current_dir(&info.path)
+                        .output()?;
+
+                    if !commit_retry.status.success() {
+                        eprintln!(
+                            "{}  Failed to commit after retrying:",
+                            emoji(no_emoji, "❌", "[ERROR]")
+                        );
+                        eprintln!("{}", String::from_utf8_lossy(&commit_retry.stderr));
+                        return Ok(());
+                    }
+                } else {
+                    eprintln!(
+                        "{}  Failed to commit changes:",
+                        emoji(no_emoji, "⚠️", "[WARN]")
+                    );
+                    eprintln!("{}", stderr);
+                    return Ok(());
+                }
+            }
+
+            println!(
+                "{} Changes committed successfully",
+                emoji(no_emoji, "✅", "[OK]")
+            );
+
+            if verbose {
+                let stdout = String::from_utf8_lossy(&commit_result.stdout);
+                if !stdout.is_empty() {
+                    println!("{}", stdout);
+                }
+            }
+        } else if has_uncommitted_changes && !config.workflow.auto_commit {
+            println!(
+                "{}  Uncommitted changes detected but auto_commit is disabled",
+                emoji(no_emoji, "ℹ️", "[INFO]")
+            );
+            println!("  You can enable it in config.toml: [workflow] auto_commit = true");
+        }
+
+        // Step 3: Check if there are commits to push
         let default_branch_output = Command::new("git")
             .args(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
             .current_dir(&info.path)
@@ -576,7 +684,6 @@ impl WorkArgs {
                 .trim()
                 .to_string()
         } else {
-            // Fallback to origin/main if we can't determine the default branch
             "origin/main".to_string()
         };
 
@@ -591,12 +698,12 @@ impl WorkArgs {
 
         let has_commits = !log_output.stdout.is_empty();
 
-        if !has_changes && !has_commits {
-            println!("{}  No changes to push", emoji(no_emoji, "ℹ️", "[INFO]"));
+        if !has_commits {
+            println!("{}  No commits to push", emoji(no_emoji, "ℹ️", "[INFO]"));
             return Ok(());
         }
 
-        // Auto-push if configured
+        // Step 4: Auto-push if configured
         if config.workflow.auto_push {
             println!("Pushing branch to origin...");
 
@@ -641,12 +748,11 @@ impl WorkArgs {
             }
         }
 
-        // Auto-PR if configured
-        if config.workflow.auto_pr {
+        // Step 5: Auto-PR if configured
+        let pr_number = if config.workflow.auto_pr {
             println!();
             println!("Creating pull request...");
 
-            // Check for PR description file
             let pr_desc_path = info.path.join(".murmur").join("pr-description.md");
 
             let pr_result = if pr_desc_path.exists() {
@@ -673,7 +779,7 @@ impl WorkArgs {
                         "pr",
                         "create",
                         "--title",
-                        issue_title,
+                        &issue.title,
                         "--body",
                         &format!("Closes #{}", self.issue),
                     ])
@@ -687,7 +793,6 @@ impl WorkArgs {
                 eprintln!("{}", stderr);
                 eprintln!();
 
-                // Check for common permission errors
                 if stderr.contains("authentication")
                     || stderr.contains("token")
                     || stderr.contains("permission")
@@ -712,19 +817,39 @@ impl WorkArgs {
                     eprintln!(
                         "  cd {} && gh pr create --title \"{}\" --body \"Closes #{}\"",
                         info.path.display(),
-                        issue_title,
+                        issue.title,
                         self.issue
                     );
                 }
-                return Ok(());
-            }
+                None
+            } else {
+                let stdout = String::from_utf8_lossy(&pr_result.stdout);
+                println!(
+                    "{} Pull request created successfully",
+                    emoji(no_emoji, "✅", "[OK]")
+                );
+                println!("{}", stdout.trim());
 
-            let stdout = String::from_utf8_lossy(&pr_result.stdout);
+                // Extract PR number from output (gh pr create returns URL like https://github.com/owner/repo/pull/123)
+                stdout
+                    .trim()
+                    .split('/')
+                    .next_back()
+                    .and_then(|s| s.parse::<u64>().ok())
+            }
+        } else {
+            None
+        };
+
+        // Step 6: Monitor for review feedback if configured and PR was created
+        if config.workflow.auto_review_loop && pr_number.is_some() {
+            println!();
             println!(
-                "{} Pull request created successfully",
-                emoji(no_emoji, "✅", "[OK]")
+                "{}  Review feedback monitoring is enabled",
+                emoji(no_emoji, "👀", "[INFO]")
             );
-            println!("{}", stdout.trim());
+            println!("  Note: This feature will be implemented in a future update");
+            println!("  For now, you'll need to manually address review feedback");
         }
 
         Ok(())

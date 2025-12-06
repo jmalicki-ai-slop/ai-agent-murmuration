@@ -168,18 +168,26 @@ impl AgentConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct WorkflowConfig {
+    /// Automatically commit uncommitted changes after agent completion
+    pub auto_commit: bool,
+
     /// Automatically push branch after agent completion
     pub auto_push: bool,
 
     /// Automatically create PR after agent completion
     pub auto_pr: bool,
+
+    /// Re-spawn agent to address review feedback (opt-in)
+    pub auto_review_loop: bool,
 }
 
 impl Default for WorkflowConfig {
     fn default() -> Self {
         Self {
+            auto_commit: true,
             auto_push: true,
             auto_pr: true,
+            auto_review_loop: false,
         }
     }
 }
@@ -325,6 +333,7 @@ claude_path = "/usr/local/bin/claude"
 model = "claude-sonnet-4-20250514"
 
 [workflow]
+auto_commit = false
 auto_push = false
 auto_pr = true
 "#;
@@ -334,6 +343,7 @@ auto_pr = true
             config.agent.model,
             Some("claude-sonnet-4-20250514".to_string())
         );
+        assert!(!config.workflow.auto_commit);
         assert!(!config.workflow.auto_push);
         assert!(config.workflow.auto_pr);
     }
