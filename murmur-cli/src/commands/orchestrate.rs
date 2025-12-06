@@ -31,7 +31,7 @@ pub struct OrchestrateArgs {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Skip dependency checking within the orchestration
+    /// Force recreation of worktrees even if they exist
     #[arg(short, long)]
     pub force: bool,
 
@@ -430,6 +430,7 @@ impl OrchestrateArgs {
                         let issue = issue.clone();
                         let config = exec_config.config.clone();
                         let verbose = exec_config.verbose;
+                        let force = self.force;
                         let completed = Arc::clone(&completed);
                         let failed = Arc::clone(&failed);
 
@@ -441,7 +442,8 @@ impl OrchestrateArgs {
                         );
 
                         let handle = tokio::spawn(async move {
-                            let result = execute_single_issue(&issue, &config, verbose).await;
+                            let result =
+                                execute_single_issue(&issue, &config, verbose, force).await;
 
                             match &result {
                                 Ok(_) => {
@@ -460,39 +462,53 @@ impl OrchestrateArgs {
                 }
 
                 // Wait for this chunk to complete
-                for handle in handles {
+                // We need to track which handle belongs to which issue for panic recovery
+                let chunk_issues: Vec<u64> = chunk.to_vec();
+
+                for (idx, handle) in handles.into_iter().enumerate() {
+                    let issue_num = chunk_issues[idx];
+
                     match handle.await {
-                        Ok((issue_num, Ok(_))) => {
+                        Ok((returned_issue_num, Ok(_))) => {
                             println!(
                                 "  {} #{} completed successfully",
                                 emoji(exec_config.no_emoji, "✅", "[OK]"),
-                                issue_num
+                                returned_issue_num
                             );
                             results.push(IssueResult {
-                                issue_number: issue_num,
+                                issue_number: returned_issue_num,
                                 success: true,
                                 error: None,
                             });
                         }
-                        Ok((issue_num, Err(e))) => {
+                        Ok((returned_issue_num, Err(e))) => {
                             println!(
                                 "  {} #{} failed: {}",
                                 emoji(exec_config.no_emoji, "❌", "[FAIL]"),
-                                issue_num,
+                                returned_issue_num,
                                 e
                             );
                             results.push(IssueResult {
-                                issue_number: issue_num,
+                                issue_number: returned_issue_num,
                                 success: false,
                                 error: Some(e.to_string()),
                             });
                         }
                         Err(e) => {
+                            // Task panicked - we know which issue it was from the index
                             println!(
-                                "  {} Task panicked: {}",
+                                "  {} #{} panicked: {}",
                                 emoji(exec_config.no_emoji, "💥", "[PANIC]"),
+                                issue_num,
                                 e
                             );
+                            // Mark this issue as failed so dependent issues are skipped
+                            failed.lock().await.insert(issue_num);
+                            results.push(IssueResult {
+                                issue_number: issue_num,
+                                success: false,
+                                error: Some(format!("Task panicked: {}", e)),
+                            });
                         }
                     }
                 }
@@ -535,7 +551,12 @@ impl OrchestrateArgs {
 }
 
 /// Execute work on a single issue
-async fn execute_single_issue(issue: &Issue, config: &Config, verbose: bool) -> anyhow::Result<()> {
+async fn execute_single_issue(
+    issue: &Issue,
+    config: &Config,
+    verbose: bool,
+    force: bool,
+) -> anyhow::Result<()> {
     // Skip already closed issues
     if issue.state == IssueState::Closed {
         return Ok(());
@@ -556,10 +577,24 @@ async fn execute_single_issue(issue: &Issue, config: &Config, verbose: bool) -> 
 
     let worktree_options = WorktreeOptions {
         branch_name: branch_name.clone(),
-        force: false,
+        force,
     };
 
-    let info = git_repo.create_cached_worktree(&point, &worktree_options)?;
+    // Create worktree with proper error handling
+    let info = git_repo
+        .create_cached_worktree(&point, &worktree_options)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to create worktree for issue #{}: {}. {}",
+                issue.number,
+                e,
+                if !force {
+                    "Try using --force to recreate existing worktrees"
+                } else {
+                    "Check that the repository and filesystem are accessible"
+                }
+            )
+        })?;
 
     // Build prompt from issue
     let prompt = build_prompt_from_issue(issue);
