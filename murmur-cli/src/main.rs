@@ -59,6 +59,10 @@ struct Cli {
     #[arg(long, global = true, env = "MURMUR_MODEL")]
     model: Option<String>,
 
+    /// Backend to use: claude or cursor (overrides config and env)
+    #[arg(long, global = true, env = "MURMUR_BACKEND")]
+    backend: Option<String>,
+
     /// Disable emoji output (use ASCII alternatives)
     #[arg(long, global = true)]
     no_emoji: bool,
@@ -119,7 +123,11 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Load configuration with overrides
-    let config = Config::load_with_overrides(cli.claude_path.clone(), cli.model.clone())?;
+    let config = Config::load_with_overrides(
+        cli.claude_path.clone(),
+        cli.model.clone(),
+        cli.backend.clone(),
+    )?;
 
     if cli.verbose {
         tracing::info!(
@@ -162,6 +170,7 @@ async fn main() -> anyhow::Result<()> {
             println!("====================");
             println!();
             println!("Agent Settings:");
+            println!("  backend: {}", config.agent.backend);
             println!("  claude_path: {}", config.agent.claude_path);
             println!(
                 "  model: {}",
