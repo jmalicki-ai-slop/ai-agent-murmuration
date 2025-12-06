@@ -190,6 +190,9 @@ pub struct WorktreeRecord {
     /// Path to the main repository (for finding git repo when worktree is cached)
     pub main_repo_path: Option<String>,
 
+    /// Base commit SHA at worktree creation (replaces .murmur-worktree.toml base_commit)
+    pub base_commit: Option<String>,
+
     /// Status: active, completed, abandoned, stale
     pub status: String,
 
@@ -211,6 +214,7 @@ impl WorktreeRecord {
             issue_number: None,
             agent_run_id: None,
             main_repo_path: None,
+            base_commit: None,
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
@@ -232,6 +236,12 @@ impl WorktreeRecord {
     /// Set the main repository path for this worktree
     pub fn with_main_repo_path(mut self, main_repo_path: impl Into<String>) -> Self {
         self.main_repo_path = Some(main_repo_path.into());
+        self
+    }
+
+    /// Set the base commit SHA for this worktree
+    pub fn with_base_commit(mut self, base_commit: impl Into<String>) -> Self {
+        self.base_commit = Some(base_commit.into());
         self
     }
 

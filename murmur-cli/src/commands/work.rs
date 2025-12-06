@@ -2,8 +2,7 @@
 
 use clap::Args;
 use murmur_core::{
-    AgentSpawner, BranchingOptions, Config, GitRepo, OutputStreamer, Secrets, WorktreeMetadata,
-    WorktreeOptions,
+    AgentSpawner, BranchingOptions, Config, GitRepo, OutputStreamer, Secrets, WorktreeOptions,
 };
 use murmur_db::{
     models::{AgentRun, ConversationLog, WorktreeRecord},
@@ -362,21 +361,18 @@ impl WorkArgs {
 
         let info = git_repo.create_cached_worktree(&point, &worktree_options)?;
 
-        // Save metadata
-        let metadata =
-            WorktreeMetadata::new(format!("issue-{}", self.issue), &point.commit, &branch_name);
-        metadata.save(&info.path)?;
-
         println!("  Created: {}", info.path.display());
         println!("  Branch:  {}", info.branch);
         println!();
 
         // Track worktree in database immediately after creation to avoid race conditions
         // This is especially important when using --force, where the old record was deleted earlier
+        // Note: base_commit is now stored in database instead of .murmur-worktree.toml file
         let worktree_record =
             WorktreeRecord::new(info.path.to_string_lossy().to_string(), branch_name.clone())
                 .with_issue_number(self.issue as i64)
-                .with_main_repo_path(git_repo.root().to_string_lossy().to_string());
+                .with_main_repo_path(git_repo.root().to_string_lossy().to_string())
+                .with_base_commit(&point.commit);
 
         let worktree_repo = WorktreeRepository::new(&db);
         let worktree_id = worktree_repo

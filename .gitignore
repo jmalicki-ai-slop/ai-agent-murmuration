@@ -13,3 +13,6 @@ Cargo.lock
 
 # Murmuration cache
 .murmur/
+
+# Legacy worktree metadata (now stored in SQLite database)
+.murmur-worktree.toml
