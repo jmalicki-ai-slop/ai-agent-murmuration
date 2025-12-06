@@ -189,6 +189,18 @@ impl Database {
                 .execute("ALTER TABLE worktrees ADD COLUMN main_repo_path TEXT", [])?;
         }
 
+        // Migrate existing worktrees table to add base_commit column if it doesn't exist
+        let has_base_commit = self.conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('worktrees') WHERE name='base_commit'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )?;
+
+        if has_base_commit == 0 {
+            self.conn
+                .execute("ALTER TABLE worktrees ADD COLUMN base_commit TEXT", [])?;
+        }
+
         // Create issue_states table for tracking GitHub issue status
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS issue_states (

@@ -2,8 +2,7 @@
 
 use clap::{Args, Subcommand};
 use murmur_core::{
-    BranchingOptions, GitRepo, PoolConfig, RepoUrl, WorktreeMetadata, WorktreeOptions,
-    WorktreePool, WorktreeStatus,
+    BranchingOptions, GitRepo, PoolConfig, RepoUrl, WorktreeOptions, WorktreePool, WorktreeStatus,
 };
 use murmur_db::{repos::WorktreeRepository, Database};
 
@@ -162,9 +161,9 @@ async fn create_worktree(
     // Create the worktree
     let info = git_repo.create_cached_worktree(&point, &worktree_options)?;
 
-    // Save metadata
-    let metadata = WorktreeMetadata::new(task, &point.commit, &branch_name);
-    metadata.save(&info.path)?;
+    // Note: Worktree metadata is now stored in the SQLite database (murmur-db)
+    // instead of .murmur-worktree.toml files. The database is managed by
+    // murmur work command. For standalone worktree create, no DB tracking yet.
 
     println!("Created worktree:");
     println!("  Path:   {}", info.path.display());
@@ -386,27 +385,12 @@ async fn clean_worktrees(
 
                 // Try to find and delete branch if requested
                 if delete_branches {
-                    // Load metadata to get branch name
-                    if let Ok(meta) = WorktreeMetadata::load(path) {
-                        // Try to find the main repository path from the database record
-                        let repo_result = if let Ok(Some(wt_rec)) =
-                            worktree_repo.find_by_path(&path.to_string_lossy())
-                        {
-                            if let Some(ref main_path) = wt_rec.main_repo_path {
-                                GitRepo::open(main_path)
-                            } else {
-                                // Fallback: try to find git repo by checking ancestors
-                                path.ancestors()
-                                    .skip(1)
-                                    .find_map(|ancestor| GitRepo::open(ancestor).ok())
-                                    .ok_or_else(|| {
-                                        murmur_core::Error::Config(
-                                            "Could not find main repository".to_string(),
-                                        )
-                                    })
-                            }
+                    // Get branch name and main repo path from database
+                    if let Ok(Some(wt_rec)) = worktree_repo.find_by_path(&path.to_string_lossy()) {
+                        let repo_result = if let Some(ref main_path) = wt_rec.main_repo_path {
+                            GitRepo::open(main_path)
                         } else {
-                            // No DB record, try ancestor search
+                            // Fallback: try to find git repo by checking ancestors
                             path.ancestors()
                                 .skip(1)
                                 .find_map(|ancestor| GitRepo::open(ancestor).ok())
@@ -418,10 +402,10 @@ async fn clean_worktrees(
                         };
 
                         if let Ok(repo) = repo_result {
-                            match repo.delete_branch(&meta.branch) {
+                            match repo.delete_branch(&wt_rec.branch_name) {
                                 Ok(_) => {
                                     if verbose {
-                                        println!("    Deleted branch: {}", meta.branch);
+                                        println!("    Deleted branch: {}", wt_rec.branch_name);
                                     }
                                     total_branches_deleted += 1;
                                 }
@@ -436,6 +420,8 @@ async fn clean_worktrees(
                                 "    Warning: Could not find main repository for branch deletion"
                             );
                         }
+                    } else if verbose {
+                        eprintln!("    Warning: No database record found for branch deletion");
                     }
                 }
 

@@ -2,8 +2,11 @@
 
 use chrono::Utc;
 use clap::Args;
-use murmur_core::{WorktreeMetadata, WorktreePool};
-use murmur_db::{repos::AgentRunRepository, Database};
+use murmur_core::WorktreePool;
+use murmur_db::{
+    repos::{AgentRunRepository, WorktreeRepository},
+    Database,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -69,8 +72,8 @@ impl StatusArgs {
                     "N/A".to_string()
                 };
 
-                // Extract branch from workdir metadata
-                let branch = extract_branch_from_workdir(&run.workdir);
+                // Extract branch from database
+                let branch = extract_branch_from_workdir(&run.workdir, &db);
 
                 // Calculate time ago
                 let now = Utc::now();
@@ -299,11 +302,11 @@ fn format_duration(seconds: i64) -> String {
     }
 }
 
-/// Extract branch name from worktree path
-fn extract_branch_from_workdir(workdir: &str) -> Option<String> {
-    let path = PathBuf::from(workdir);
-    if let Ok(meta) = WorktreeMetadata::load(&path) {
-        Some(meta.branch)
+/// Extract branch name from worktree path using database
+fn extract_branch_from_workdir(workdir: &str, db: &Database) -> Option<String> {
+    let worktree_repo = WorktreeRepository::new(db);
+    if let Ok(Some(record)) = worktree_repo.find_by_path(workdir) {
+        Some(record.branch_name)
     } else {
         None
     }

@@ -20,14 +20,15 @@ impl<'a> WorktreeRepository<'a> {
     pub fn insert(&self, record: &WorktreeRecord) -> Result<i64> {
         let conn = self.db.connection();
         conn.execute(
-            "INSERT INTO worktrees (path, branch_name, issue_number, agent_run_id, main_repo_path, status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO worktrees (path, branch_name, issue_number, agent_run_id, main_repo_path, base_commit, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 record.path,
                 record.branch_name,
                 record.issue_number,
                 record.agent_run_id,
                 record.main_repo_path,
+                record.base_commit,
                 record.status,
                 record.created_at.to_rfc3339(),
                 record.updated_at.to_rfc3339(),
@@ -45,13 +46,14 @@ impl<'a> WorktreeRepository<'a> {
 
         let conn = self.db.connection();
         conn.execute(
-            "UPDATE worktrees SET path = ?1, branch_name = ?2, issue_number = ?3, agent_run_id = ?4, main_repo_path = ?5, status = ?6, updated_at = ?7 WHERE id = ?8",
+            "UPDATE worktrees SET path = ?1, branch_name = ?2, issue_number = ?3, agent_run_id = ?4, main_repo_path = ?5, base_commit = ?6, status = ?7, updated_at = ?8 WHERE id = ?9",
             params![
                 record.path,
                 record.branch_name,
                 record.issue_number,
                 record.agent_run_id,
                 record.main_repo_path,
+                record.base_commit,
                 record.status,
                 record.updated_at.to_rfc3339(),
                 id,
@@ -65,7 +67,7 @@ impl<'a> WorktreeRepository<'a> {
     pub fn find_by_path(&self, path: &str) -> Result<Option<WorktreeRecord>> {
         let conn = self.db.connection();
         let mut stmt = conn.prepare(
-            "SELECT id, path, branch_name, issue_number, agent_run_id, main_repo_path, status, created_at, updated_at
+            "SELECT id, path, branch_name, issue_number, agent_run_id, main_repo_path, base_commit, status, created_at, updated_at
              FROM worktrees WHERE path = ?1",
         )?;
 
@@ -82,7 +84,7 @@ impl<'a> WorktreeRepository<'a> {
     pub fn find_by_branch(&self, branch_name: &str) -> Result<Option<WorktreeRecord>> {
         let conn = self.db.connection();
         let mut stmt = conn.prepare(
-            "SELECT id, path, branch_name, issue_number, agent_run_id, main_repo_path, status, created_at, updated_at
+            "SELECT id, path, branch_name, issue_number, agent_run_id, main_repo_path, base_commit, status, created_at, updated_at
              FROM worktrees WHERE branch_name = ?1",
         )?;
 
@@ -99,7 +101,7 @@ impl<'a> WorktreeRepository<'a> {
     pub fn find_by_status(&self, status: &str) -> Result<Vec<WorktreeRecord>> {
         let conn = self.db.connection();
         let mut stmt = conn.prepare(
-            "SELECT id, path, branch_name, issue_number, agent_run_id, main_repo_path, status, created_at, updated_at
+            "SELECT id, path, branch_name, issue_number, agent_run_id, main_repo_path, base_commit, status, created_at, updated_at
              FROM worktrees WHERE status = ?1 ORDER BY created_at DESC",
         )?;
 
@@ -142,8 +144,8 @@ impl<'a> WorktreeRepository<'a> {
 
     /// Convert a database row to a WorktreeRecord
     fn row_to_record(&self, row: &rusqlite::Row) -> Result<WorktreeRecord> {
-        let created_at_str: String = row.get(7)?;
-        let updated_at_str: String = row.get(8)?;
+        let created_at_str: String = row.get(8)?;
+        let updated_at_str: String = row.get(9)?;
 
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
             .map_err(|e| Error::InvalidData(format!("Invalid created_at timestamp: {}", e)))?
@@ -160,7 +162,8 @@ impl<'a> WorktreeRepository<'a> {
             issue_number: row.get(3)?,
             agent_run_id: row.get(4)?,
             main_repo_path: row.get(5)?,
-            status: row.get(6)?,
+            base_commit: row.get(6)?,
+            status: row.get(7)?,
             created_at,
             updated_at,
         })
