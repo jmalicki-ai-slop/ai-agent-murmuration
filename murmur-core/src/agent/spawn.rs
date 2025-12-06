@@ -28,6 +28,15 @@ impl std::fmt::Debug for AgentHandle {
 }
 
 impl AgentHandle {
+    /// Create a new agent handle
+    pub(crate) fn new(child: Child, prompt: String, workdir: String) -> Self {
+        Self {
+            child,
+            prompt,
+            workdir,
+        }
+    }
+
     /// Get the prompt this agent is working on
     pub fn prompt(&self) -> &str {
         &self.prompt
@@ -163,11 +172,7 @@ impl AgentSpawner {
             }
         })?;
 
-        Ok(AgentHandle {
-            child,
-            prompt,
-            workdir: workdir_str,
-        })
+        Ok(AgentHandle::new(child, prompt, workdir_str))
     }
 }
 

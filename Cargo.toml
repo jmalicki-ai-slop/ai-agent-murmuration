@@ -16,6 +16,7 @@ repository = "https://github.com/jmalicki-ai-slop/ai-agent-murmuration"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.41", features = ["full"] }
+async-trait = "0.1"
 
 # CLI
 clap = { version = "4.5", features = ["derive", "env"] }

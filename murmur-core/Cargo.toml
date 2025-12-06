@@ -8,6 +8,7 @@ description = "Core library for Murmuration multi-agent orchestration"
 
 [dependencies]
 tokio.workspace = true
+async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
