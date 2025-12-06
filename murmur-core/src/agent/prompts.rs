@@ -112,22 +112,21 @@ fn render_template(template: &str, context: &PromptContext) -> String {
 
     // Remove any remaining unset placeholders (simple pattern matching)
     // Replace {{UPPERCASE_NAME}} with "(not specified)"
-    loop {
-        let start = result.find("{{");
-        let end = result.find("}}");
-
-        match (start, end) {
-            (Some(s), Some(e)) if s < e => {
-                let placeholder = &result[s..=e + 1];
-                // Check if it's an uppercase placeholder
-                let inside = &result[s + 2..e];
-                if inside.chars().all(|c| c.is_ascii_uppercase() || c == '_') {
-                    result = result.replacen(placeholder, "(not specified)", 1);
-                } else {
-                    break;
-                }
+    let mut pos = 0;
+    while let Some(start) = result[pos..].find("{{") {
+        let start = pos + start;
+        if let Some(end_offset) = result[start + 2..].find("}}") {
+            let end = start + 2 + end_offset;
+            let inside = &result[start + 2..end];
+            if inside.chars().all(|c| c.is_ascii_uppercase() || c == '_') {
+                let placeholder = &result[start..=end + 1];
+                result = result.replacen(placeholder, "(not specified)", 1);
+                pos = start; // Re-scan from same position since string changed
+            } else {
+                pos = end + 2; // Skip past this placeholder
             }
-            _ => break,
+        } else {
+            break;
         }
     }
 
@@ -289,5 +288,27 @@ mod tests {
 
         let rendered = render(AgentType::Implement, &context);
         assert!(rendered.contains("(no dependencies)"));
+    }
+
+    #[test]
+    fn test_mixed_case_placeholders() {
+        // Test that lowercase placeholders don't prevent processing uppercase ones
+        let template =
+            "{{lowercase}} ... {{UPPERCASE}} ... {{another_lower}} ... {{ANOTHER_UPPER}}";
+        let context = PromptContext::new();
+        let rendered = render_template(template, &context);
+
+        // Lowercase/mixed-case placeholders should remain unchanged
+        assert!(rendered.contains("{{lowercase}}"));
+        assert!(rendered.contains("{{another_lower}}"));
+
+        // Uppercase placeholders should be replaced with "(not specified)"
+        assert!(rendered.contains("(not specified)"));
+        assert!(!rendered.contains("{{UPPERCASE}}"));
+        assert!(!rendered.contains("{{ANOTHER_UPPER}}"));
+
+        // Verify there are exactly 2 replacements (for the 2 uppercase placeholders)
+        let count = rendered.matches("(not specified)").count();
+        assert_eq!(count, 2, "Expected 2 uppercase placeholders to be replaced");
     }
 }
