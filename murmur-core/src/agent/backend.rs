@@ -131,19 +131,27 @@ impl Backend for ClaudeBackend {
 #[derive(Debug, Clone)]
 pub struct CursorBackend {
     cursor_path: String,
+    model: Option<String>,
 }
 
 impl CursorBackend {
     /// Create a new Cursor backend with default settings
     pub fn new() -> Self {
         Self {
-            cursor_path: "cursor".to_string(),
+            cursor_path: "cursor-agent".to_string(),
+            model: None,
         }
     }
 
     /// Create a Cursor backend with custom path
     pub fn with_path(mut self, path: impl Into<String>) -> Self {
         self.cursor_path = path.into();
+        self
+    }
+
+    /// Create a Cursor backend with a specific model
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
         self
     }
 }
@@ -162,9 +170,16 @@ impl Backend for CursorBackend {
 
     fn build_command(&self, workdir: &Path) -> Command {
         let mut cmd = Command::new(&self.cursor_path);
+        cmd.arg("--print").arg("--output-format").arg("json");
+
+        if let Some(ref model) = self.model {
+            cmd.arg("--model").arg(model);
+        }
+
         cmd.current_dir(workdir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
         cmd
     }
 
@@ -182,7 +197,7 @@ impl Backend for CursorBackend {
         }
 
         let mut cmd = self.build_command(workdir);
-        cmd.arg(prompt);
+        cmd.arg("-p").arg(prompt);
 
         let child = cmd.spawn().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -334,8 +349,12 @@ mod tests {
 
     #[test]
     fn test_cursor_backend_builder() {
-        let backend = CursorBackend::new().with_path("/custom/cursor");
-        assert_eq!(backend.cursor_path, "/custom/cursor");
+        let backend = CursorBackend::new()
+            .with_path("/custom/cursor-agent")
+            .with_model("gpt-5");
+
+        assert_eq!(backend.cursor_path, "/custom/cursor-agent");
+        assert_eq!(backend.model, Some("gpt-5".to_string()));
     }
 
     #[tokio::test]
