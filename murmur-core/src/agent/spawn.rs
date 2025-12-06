@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Stdio;
 use tokio::process::{Child, Command};
 
-use crate::config::AgentConfig;
+use crate::config::{AgentConfig, ResolvedConfig};
 use crate::{Error, Result};
 
 /// Handle to a running Claude Code agent process
@@ -69,12 +69,18 @@ impl AgentHandle {
 }
 
 /// Spawner for Claude Code agent processes
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AgentSpawner {
-    /// Agent configuration
-    config: AgentConfig,
+    /// Resolved configuration for spawning
+    config: ResolvedConfig,
     /// Environment variables to pass to spawned agents
     env_vars: Vec<(String, String)>,
+}
+
+impl Default for AgentSpawner {
+    fn default() -> Self {
+        Self::from_config(AgentConfig::default(), crate::agent::AgentType::default())
+    }
 }
 
 impl AgentSpawner {
@@ -83,17 +89,27 @@ impl AgentSpawner {
         Self::default()
     }
 
-    /// Create an agent spawner from configuration
-    pub fn from_config(config: AgentConfig) -> Self {
+    /// Create an agent spawner from configuration and agent type
+    ///
+    /// This resolves the configuration for the specific agent type
+    pub fn from_config(config: AgentConfig, agent_type: crate::agent::AgentType) -> Self {
+        Self {
+            config: config.resolve_for_type(agent_type),
+            env_vars: Vec::new(),
+        }
+    }
+
+    /// Create an agent spawner from already-resolved configuration
+    pub fn from_resolved(config: ResolvedConfig) -> Self {
         Self {
             config,
             env_vars: Vec::new(),
         }
     }
 
-    /// Set a custom path to the claude executable
-    pub fn with_claude_path(mut self, path: impl Into<String>) -> Self {
-        self.config.claude_path = path.into();
+    /// Set a custom path to the executable
+    pub fn with_executable_path(mut self, path: impl Into<String>) -> Self {
+        self.config.executable_path = path.into();
         self
     }
 
@@ -137,9 +153,9 @@ impl AgentSpawner {
             )));
         }
 
-        let claude_cmd = &self.config.claude_path;
+        let executable_path = &self.config.executable_path;
 
-        let mut cmd = Command::new(claude_cmd);
+        let mut cmd = Command::new(executable_path);
         cmd.arg("--print")
             .arg("--verbose")
             .arg("--output-format")
@@ -164,8 +180,8 @@ impl AgentSpawner {
         let child = cmd.spawn().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 Error::Agent(format!(
-                    "Claude executable not found at '{}'. Is Claude Code installed?",
-                    claude_cmd
+                    "Executable not found at '{}'. Is the agent backend installed?",
+                    executable_path
                 ))
             } else {
                 Error::Io(e)
@@ -191,8 +207,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_spawn_with_custom_claude_path() {
-        let spawner = AgentSpawner::new().with_claude_path("/usr/bin/nonexistent-claude-binary");
+    async fn test_spawn_with_custom_executable_path() {
+        let spawner = AgentSpawner::new().with_executable_path("/usr/bin/nonexistent-agent-binary");
         let result = spawner.spawn("test", env::current_dir().unwrap()).await;
         assert!(result.is_err());
         // Should fail to find the executable

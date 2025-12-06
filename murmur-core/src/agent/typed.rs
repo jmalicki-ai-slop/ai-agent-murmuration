@@ -22,7 +22,7 @@ impl TypedAgent {
     pub fn new(agent_type: AgentType) -> Self {
         Self {
             agent_type,
-            spawner: AgentSpawner::new(),
+            spawner: AgentSpawner::from_config(AgentConfig::default(), agent_type),
         }
     }
 
@@ -30,7 +30,7 @@ impl TypedAgent {
     pub fn with_config(agent_type: AgentType, config: AgentConfig) -> Self {
         Self {
             agent_type,
-            spawner: AgentSpawner::from_config(config),
+            spawner: AgentSpawner::from_config(config, agent_type),
         }
     }
 
