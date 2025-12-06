@@ -1,0 +1,43 @@
+# Murmur Configuration Example
+#
+# This configuration demonstrates per-agent-type backend and model selection.
+# Copy to ~/.config/murmur/config.toml to use.
+
+[agent]
+# Global defaults - used when no per-type config specified
+backend = "claude"
+model = "claude-opus-4-5-20251101"
+
+# Paths to AI coding tool executables
+claude_path = "claude"
+cursor_path = "cursor-agent"
+
+# Per-agent-type configuration
+# Each type can have its own backend and model override
+
+[agent.implement]
+# Use the best model for coding tasks
+backend = "claude"
+model = "claude-opus-4-5-20251101"
+
+[agent.test]
+# Can use cheaper backend for test generation
+backend = "cursor"
+# model uses cursor's default
+
+[agent.review]
+# Use high-end model for thorough code review
+backend = "claude"
+model = "claude-opus-4-5-20251101"
+
+[agent.coordinator]
+# Coordinator tasks are simpler - use unlimited/cheaper backend
+backend = "cursor"
+# model uses cursor's default
+
+[workflow]
+# Automatically push branch after agent completion
+auto_push = true
+
+# Automatically create PR after agent completion
+auto_pr = true
