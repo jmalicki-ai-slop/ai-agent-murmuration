@@ -8,6 +8,7 @@ pub mod config;
 pub mod error;
 pub mod git;
 pub mod plan;
+pub mod review;
 pub mod secrets;
 pub mod workflow;
 
@@ -25,6 +26,7 @@ pub use git::{
     WorktreeStatus,
 };
 pub use plan::{parse_plan, Phase, Plan, PlannedPR};
+pub use review::{ReviewContext, ReviewRequest, ReviewRequestBuilder, ReviewType};
 pub use secrets::{GitHubSecrets, Secrets};
 pub use workflow::{
     build_resume_prompt, find_incomplete_runs, find_latest_incomplete_run,
