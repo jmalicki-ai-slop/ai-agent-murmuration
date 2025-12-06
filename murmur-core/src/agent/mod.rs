@@ -1,6 +1,6 @@
 //! Agent module for spawning and managing Claude Code processes
 
-mod backend;
+pub mod backends;
 mod output;
 mod prompts;
 mod selection;
@@ -8,7 +8,7 @@ mod spawn;
 mod typed;
 mod types;
 
-pub use backend::{Backend, BackendRegistry, ClaudeBackend, CursorBackend};
+pub use backends::{Backend, BackendRegistry, ClaudeBackend, CursorBackend};
 pub use output::{CostInfo, OutputStreamer, PrintHandler, StreamHandler, StreamMessage};
 pub use prompts::{get_template, render, PromptBuilder, PromptContext};
 pub use spawn::{AgentHandle, AgentSpawner};

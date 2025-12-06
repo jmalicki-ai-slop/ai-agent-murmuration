@@ -1,6 +1,0 @@
-task_id = "issue-129"
-created_at = "2025-12-05T23:51:32.121568933Z"
-last_used = "2025-12-05T23:51:32.121568933Z"
-base_commit = "1f126dc184f50fa98ebe66a16b048e4632a2b64f"
-status = "active"
-branch = "murmur/issue-129"

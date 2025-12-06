@@ -1,11 +1,12 @@
 //! Agent spawning logic for Claude Code subprocess management
 
 use std::path::Path;
-use std::process::Stdio;
-use tokio::process::{Child, Command};
+use tokio::process::Child;
 
-use crate::config::{AgentConfig, ResolvedConfig};
+use crate::config::AgentConfig;
 use crate::{Error, Result};
+
+use super::backends::{Backend, ClaudeBackend};
 
 /// Handle to a running Claude Code agent process
 pub struct AgentHandle {
@@ -69,59 +70,49 @@ impl AgentHandle {
 }
 
 /// Spawner for Claude Code agent processes
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AgentSpawner {
-    /// Resolved configuration for spawning
-    config: ResolvedConfig,
-    /// Environment variables to pass to spawned agents
-    env_vars: Vec<(String, String)>,
-}
-
-impl Default for AgentSpawner {
-    fn default() -> Self {
-        Self::from_config(AgentConfig::default(), crate::agent::AgentType::default())
-    }
+    /// Backend implementation
+    backend: ClaudeBackend,
 }
 
 impl AgentSpawner {
     /// Create a new agent spawner with default settings
     pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Create an agent spawner from configuration and agent type
-    ///
-    /// This resolves the configuration for the specific agent type
-    pub fn from_config(config: AgentConfig, agent_type: crate::agent::AgentType) -> Self {
         Self {
-            config: config.resolve_for_type(agent_type),
-            env_vars: Vec::new(),
+            backend: ClaudeBackend::new(),
         }
     }
 
-    /// Create an agent spawner from already-resolved configuration
-    pub fn from_resolved(config: ResolvedConfig) -> Self {
-        Self {
-            config,
-            env_vars: Vec::new(),
-        }
+    /// Create an agent spawner from configuration
+    pub fn from_config(config: AgentConfig) -> Self {
+        // Convert config to backend
+        let backend = ClaudeBackend::new().with_path(config.claude_path);
+
+        let backend = if let Some(model) = config.model {
+            backend.with_model(model)
+        } else {
+            backend
+        };
+
+        Self { backend }
     }
 
-    /// Set a custom path to the executable
-    pub fn with_executable_path(mut self, path: impl Into<String>) -> Self {
-        self.config.executable_path = path.into();
+    /// Set a custom path to the claude executable
+    pub fn with_claude_path(mut self, path: impl Into<String>) -> Self {
+        self.backend = self.backend.with_path(path);
         self
     }
 
     /// Set the model to use
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
-        self.config.model = Some(model.into());
+        self.backend = self.backend.with_model(model);
         self
     }
 
     /// Add an environment variable to pass to the spawned agent
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.env_vars.push((key.into(), value.into()));
+        self.backend = self.backend.with_env(key, value);
         self
     }
 
@@ -138,57 +129,21 @@ impl AgentSpawner {
         prompt: impl Into<String>,
         workdir: impl AsRef<Path>,
     ) -> Result<AgentHandle> {
-        let prompt = prompt.into();
-        let workdir_path = workdir.as_ref();
-        let workdir_str = workdir_path
-            .to_str()
-            .ok_or_else(|| Error::Agent("Invalid working directory path".to_string()))?
-            .to_string();
+        self.backend.spawn(&prompt.into(), workdir.as_ref()).await
+    }
+}
 
-        // Verify working directory exists
-        if !workdir_path.exists() {
-            return Err(Error::Agent(format!(
-                "Working directory does not exist: {}",
-                workdir_str
-            )));
-        }
+impl Default for AgentSpawner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-        let executable_path = &self.config.executable_path;
-
-        let mut cmd = Command::new(executable_path);
-        cmd.arg("--print")
-            .arg("--verbose")
-            .arg("--output-format")
-            .arg("stream-json")
-            .arg("--dangerously-skip-permissions");
-
-        // Add model flag if specified
-        if let Some(ref model) = self.config.model {
-            cmd.arg("--model").arg(model);
-        }
-
-        // Add environment variables
-        for (key, value) in &self.env_vars {
-            cmd.env(key, value);
-        }
-
-        cmd.arg(&prompt)
-            .current_dir(workdir_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        let child = cmd.spawn().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                Error::Agent(format!(
-                    "Executable not found at '{}'. Is the agent backend installed?",
-                    executable_path
-                ))
-            } else {
-                Error::Io(e)
-            }
-        })?;
-
-        Ok(AgentHandle::new(child, prompt, workdir_str))
+impl std::fmt::Debug for AgentSpawner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgentSpawner")
+            .field("backend", &"ClaudeBackend")
+            .finish()
     }
 }
 
@@ -207,8 +162,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_spawn_with_custom_executable_path() {
-        let spawner = AgentSpawner::new().with_executable_path("/usr/bin/nonexistent-agent-binary");
+    async fn test_spawn_with_custom_claude_path() {
+        let spawner = AgentSpawner::new().with_claude_path("/usr/bin/nonexistent-claude-binary");
         let result = spawner.spawn("test", env::current_dir().unwrap()).await;
         assert!(result.is_err());
         // Should fail to find the executable
