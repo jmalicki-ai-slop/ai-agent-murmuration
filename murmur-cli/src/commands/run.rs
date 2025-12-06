@@ -66,8 +66,11 @@ impl RunArgs {
             return Ok(());
         }
 
-        // Create spawner from config
-        let spawner = AgentSpawner::from_config(config.agent.clone());
+        // Create spawner from config (using default Implement agent type)
+        let spawner = AgentSpawner::from_config(
+            config.agent.clone(),
+            murmur_core::agent::AgentType::default(),
+        );
 
         println!("Spawning Claude Code agent...");
         let mut handle = spawner.spawn(&self.prompt, &workdir).await?;

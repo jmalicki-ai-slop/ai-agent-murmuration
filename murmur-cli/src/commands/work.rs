@@ -437,8 +437,11 @@ impl WorkArgs {
             }
         }
 
-        // Spawn agent with GitHub token if available
-        let mut spawner = AgentSpawner::from_config(config.agent.clone());
+        // Spawn agent with GitHub token if available (using default Implement agent type)
+        let mut spawner = AgentSpawner::from_config(
+            config.agent.clone(),
+            murmur_core::agent::AgentType::default(),
+        );
 
         // Pass GitHub token to agent via environment variable
         if let Ok(secrets) = Secrets::load() {

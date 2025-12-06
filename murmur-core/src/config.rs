@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::agent::AgentType;
 use crate::{Error, Result};
 
 /// Backend type for agent execution
@@ -29,6 +30,22 @@ pub struct TypeConfig {
 
     /// Override model for this agent type
     pub model: Option<String>,
+}
+
+/// Fully resolved configuration for spawning an agent
+///
+/// This represents the final configuration after resolving the chain:
+/// type-specific config → global config → defaults
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedConfig {
+    /// The backend to use (resolved)
+    pub backend: Backend,
+
+    /// The model to use (resolved, may still be None to use backend default)
+    pub model: Option<String>,
+
+    /// Path to the executable for this backend
+    pub executable_path: String,
 }
 
 /// Agent-related configuration
@@ -71,6 +88,54 @@ impl Default for AgentConfig {
             test: None,
             review: None,
             coordinator: None,
+        }
+    }
+}
+
+impl AgentConfig {
+    /// Resolve the effective configuration for a specific agent type
+    ///
+    /// Resolution chain: type-specific config → global config → defaults
+    ///
+    /// # Arguments
+    /// * `agent_type` - The type of agent to resolve configuration for
+    ///
+    /// # Returns
+    /// A fully resolved configuration with all values determined
+    pub fn resolve_for_type(&self, agent_type: AgentType) -> ResolvedConfig {
+        // Get the type-specific config if it exists
+        let type_config = match agent_type {
+            AgentType::Implement => &self.implement,
+            AgentType::Test => &self.test,
+            AgentType::Review => &self.review,
+            AgentType::Coordinator => &self.coordinator,
+        };
+
+        // Resolve backend: type-specific → global
+        let backend = type_config
+            .as_ref()
+            .and_then(|tc| tc.backend)
+            .unwrap_or(self.backend);
+
+        // Resolve model: type-specific → global → None
+        let model = type_config
+            .as_ref()
+            .and_then(|tc| tc.model.clone())
+            .or_else(|| self.model.clone());
+
+        // Resolve executable path based on backend
+        let executable_path = match backend {
+            Backend::Claude => self.claude_path.clone(),
+            Backend::Cursor => self
+                .cursor_path
+                .clone()
+                .unwrap_or_else(|| "cursor".to_string()),
+        };
+
+        ResolvedConfig {
+            backend,
+            model,
+            executable_path,
         }
     }
 }
@@ -390,5 +455,190 @@ model = "claude-haiku-4-20250514"
         let review = config.agent.review.as_ref().unwrap();
         assert_eq!(review.model, Some("claude-haiku-4-20250514".to_string()));
         assert!(review.backend.is_none());
+    }
+
+    #[test]
+    fn test_resolve_for_type_uses_global_when_no_type_specific() {
+        // Test that global config is used when no type-specific config is provided
+        let config = AgentConfig {
+            backend: Backend::Claude,
+            model: Some("global-model".to_string()),
+            claude_path: "/usr/bin/claude".to_string(),
+            cursor_path: Some("/usr/bin/cursor".to_string()),
+            implement: None,
+            test: None,
+            review: None,
+            coordinator: None,
+        };
+
+        let resolved = config.resolve_for_type(AgentType::Implement);
+        assert_eq!(resolved.backend, Backend::Claude);
+        assert_eq!(resolved.model, Some("global-model".to_string()));
+        assert_eq!(resolved.executable_path, "/usr/bin/claude");
+    }
+
+    #[test]
+    fn test_resolve_for_type_type_specific_overrides_global() {
+        // Test that type-specific config overrides global config
+        let config = AgentConfig {
+            backend: Backend::Claude,
+            model: Some("global-model".to_string()),
+            claude_path: "/usr/bin/claude".to_string(),
+            cursor_path: Some("/usr/bin/cursor".to_string()),
+            implement: Some(TypeConfig {
+                backend: Some(Backend::Cursor),
+                model: Some("implement-model".to_string()),
+            }),
+            test: None,
+            review: None,
+            coordinator: None,
+        };
+
+        let resolved = config.resolve_for_type(AgentType::Implement);
+        assert_eq!(resolved.backend, Backend::Cursor);
+        assert_eq!(resolved.model, Some("implement-model".to_string()));
+        assert_eq!(resolved.executable_path, "/usr/bin/cursor");
+    }
+
+    #[test]
+    fn test_resolve_for_type_defaults_when_neither_specified() {
+        // Test that defaults are used when neither global nor type-specific is set
+        let config = AgentConfig::default();
+
+        let resolved = config.resolve_for_type(AgentType::Test);
+        assert_eq!(resolved.backend, Backend::Claude);
+        assert_eq!(resolved.model, None);
+        assert_eq!(resolved.executable_path, "claude");
+    }
+
+    #[test]
+    fn test_resolve_for_type_partial_type_override() {
+        // Test that type-specific config can partially override (e.g., only model)
+        let config = AgentConfig {
+            backend: Backend::Claude,
+            model: Some("global-model".to_string()),
+            claude_path: "/usr/bin/claude".to_string(),
+            cursor_path: Some("/usr/bin/cursor".to_string()),
+            implement: None,
+            test: Some(TypeConfig {
+                backend: None,                         // Don't override backend
+                model: Some("test-model".to_string()), // Only override model
+            }),
+            review: None,
+            coordinator: None,
+        };
+
+        let resolved = config.resolve_for_type(AgentType::Test);
+        assert_eq!(resolved.backend, Backend::Claude); // Uses global backend
+        assert_eq!(resolved.model, Some("test-model".to_string())); // Uses type-specific model
+        assert_eq!(resolved.executable_path, "/usr/bin/claude");
+    }
+
+    #[test]
+    fn test_resolve_for_type_all_agent_types() {
+        // Test resolution for all agent types
+        let config = AgentConfig {
+            backend: Backend::Claude,
+            model: Some("global-model".to_string()),
+            claude_path: "claude".to_string(),
+            cursor_path: None,
+            implement: Some(TypeConfig {
+                backend: None,
+                model: Some("impl-model".to_string()),
+            }),
+            test: Some(TypeConfig {
+                backend: None,
+                model: Some("test-model".to_string()),
+            }),
+            review: Some(TypeConfig {
+                backend: None,
+                model: Some("review-model".to_string()),
+            }),
+            coordinator: Some(TypeConfig {
+                backend: None,
+                model: Some("coord-model".to_string()),
+            }),
+        };
+
+        let impl_resolved = config.resolve_for_type(AgentType::Implement);
+        assert_eq!(impl_resolved.model, Some("impl-model".to_string()));
+
+        let test_resolved = config.resolve_for_type(AgentType::Test);
+        assert_eq!(test_resolved.model, Some("test-model".to_string()));
+
+        let review_resolved = config.resolve_for_type(AgentType::Review);
+        assert_eq!(review_resolved.model, Some("review-model".to_string()));
+
+        let coord_resolved = config.resolve_for_type(AgentType::Coordinator);
+        assert_eq!(coord_resolved.model, Some("coord-model".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_for_type_cursor_backend() {
+        // Test resolution with cursor backend
+        let config = AgentConfig {
+            backend: Backend::Claude,
+            model: Some("global-model".to_string()),
+            claude_path: "/usr/bin/claude".to_string(),
+            cursor_path: Some("/usr/local/bin/cursor".to_string()),
+            implement: Some(TypeConfig {
+                backend: Some(Backend::Cursor),
+                model: None,
+            }),
+            test: None,
+            review: None,
+            coordinator: None,
+        };
+
+        let resolved = config.resolve_for_type(AgentType::Implement);
+        assert_eq!(resolved.backend, Backend::Cursor);
+        assert_eq!(resolved.executable_path, "/usr/local/bin/cursor");
+        assert_eq!(resolved.model, Some("global-model".to_string())); // Falls back to global
+    }
+
+    #[test]
+    fn test_resolve_for_type_cursor_backend_no_path() {
+        // Test that cursor backend uses default "cursor" when path is not set
+        let config = AgentConfig {
+            backend: Backend::Claude,
+            model: None,
+            claude_path: "claude".to_string(),
+            cursor_path: None, // No cursor path set
+            implement: Some(TypeConfig {
+                backend: Some(Backend::Cursor),
+                model: None,
+            }),
+            test: None,
+            review: None,
+            coordinator: None,
+        };
+
+        let resolved = config.resolve_for_type(AgentType::Implement);
+        assert_eq!(resolved.backend, Backend::Cursor);
+        assert_eq!(resolved.executable_path, "cursor"); // Default cursor path
+    }
+
+    #[test]
+    fn test_resolved_config_equality() {
+        let config1 = ResolvedConfig {
+            backend: Backend::Claude,
+            model: Some("test".to_string()),
+            executable_path: "claude".to_string(),
+        };
+
+        let config2 = ResolvedConfig {
+            backend: Backend::Claude,
+            model: Some("test".to_string()),
+            executable_path: "claude".to_string(),
+        };
+
+        let config3 = ResolvedConfig {
+            backend: Backend::Cursor,
+            model: Some("test".to_string()),
+            executable_path: "cursor".to_string(),
+        };
+
+        assert_eq!(config1, config2);
+        assert_ne!(config1, config3);
     }
 }
