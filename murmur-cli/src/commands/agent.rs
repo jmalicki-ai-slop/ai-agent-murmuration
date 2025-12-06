@@ -57,7 +57,7 @@ impl StartArgs {
     pub async fn execute(&self, verbose: bool, config: &Config) -> anyhow::Result<()> {
         // Resolve to absolute path
         let workdir = if self.workdir.is_absolute() {
-            self.workdir.clone()
+            self.workdir.to_path_buf()
         } else {
             std::env::current_dir()?.join(&self.workdir)
         };
