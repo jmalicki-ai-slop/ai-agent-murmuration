@@ -8,7 +8,7 @@
 pub mod resume;
 // pub mod review;
 pub mod state;
-// pub mod tdd;
+pub mod tdd;
 
 // pub use coordinator::{
 //     CoordinatorConfig, CoordinatorPhase, CoordinatorState, CoordinatorWorkflow, PhaseTransition,
@@ -22,4 +22,6 @@ pub use resume::{
 //     ReviewIssue, ReviewResult, ReviewState, ReviewTrigger, ReviewVerdict, ReviewWorkflow,
 // };
 pub use state::{PhaseValidation, StateMachine, Workflow};
-// pub use tdd::{TddPhase, TddState, TddWorkflow};
+pub use tdd::{
+    PhaseValidation as TddPhaseValidation, TddPhase, TddState, TddTransition, TddWorkflow,
+};
