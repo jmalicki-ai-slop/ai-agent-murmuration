@@ -21,6 +21,30 @@ pub enum Backend {
     Cursor,
 }
 
+impl std::str::FromStr for Backend {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "claude" => Ok(Backend::Claude),
+            "cursor" => Ok(Backend::Cursor),
+            _ => Err(format!(
+                "Invalid backend: {}. Valid options: claude, cursor",
+                s
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for Backend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Backend::Claude => write!(f, "claude"),
+            Backend::Cursor => write!(f, "cursor"),
+        }
+    }
+}
+
 /// Per-agent-type configuration overrides
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -206,6 +230,7 @@ impl Config {
     /// Supported variables:
     /// - MURMUR_CLAUDE_PATH: Path to claude executable
     /// - MURMUR_MODEL: Model to use
+    /// - MURMUR_BACKEND: Backend to use (claude or cursor)
     pub fn with_env_overrides(mut self) -> Self {
         if let Ok(claude_path) = std::env::var("MURMUR_CLAUDE_PATH") {
             self.agent.claude_path = claude_path;
@@ -213,6 +238,12 @@ impl Config {
 
         if let Ok(model) = std::env::var("MURMUR_MODEL") {
             self.agent.model = Some(model);
+        }
+
+        if let Ok(backend_str) = std::env::var("MURMUR_BACKEND") {
+            if let Ok(backend) = backend_str.parse::<Backend>() {
+                self.agent.backend = backend;
+            }
         }
 
         self
@@ -223,6 +254,7 @@ impl Config {
         mut self,
         claude_path: Option<String>,
         model: Option<String>,
+        backend: Option<String>,
     ) -> Self {
         if let Some(path) = claude_path {
             self.agent.claude_path = path;
@@ -232,16 +264,26 @@ impl Config {
             self.agent.model = Some(m);
         }
 
+        if let Some(backend_str) = backend {
+            if let Ok(b) = backend_str.parse::<Backend>() {
+                self.agent.backend = b;
+            }
+        }
+
         self
     }
 
     /// Load configuration with all overrides applied
     ///
     /// Priority: CLI > env > config file > defaults
-    pub fn load_with_overrides(claude_path: Option<String>, model: Option<String>) -> Result<Self> {
+    pub fn load_with_overrides(
+        claude_path: Option<String>,
+        model: Option<String>,
+        backend: Option<String>,
+    ) -> Result<Self> {
         Ok(Self::load()?
             .with_env_overrides()
-            .with_cli_overrides(claude_path, model))
+            .with_cli_overrides(claude_path, model, backend))
     }
 }
 
@@ -264,11 +306,15 @@ mod tests {
 
     #[test]
     fn test_cli_overrides() {
-        let config = Config::default()
-            .with_cli_overrides(Some("/custom/claude".to_string()), Some("opus".to_string()));
+        let config = Config::default().with_cli_overrides(
+            Some("/custom/claude".to_string()),
+            Some("opus".to_string()),
+            Some("cursor".to_string()),
+        );
 
         assert_eq!(config.agent.claude_path, "/custom/claude");
         assert_eq!(config.agent.model, Some("opus".to_string()));
+        assert_eq!(config.agent.backend, Backend::Cursor);
     }
 
     #[test]
@@ -640,5 +686,50 @@ model = "claude-haiku-4-20250514"
 
         assert_eq!(config1, config2);
         assert_ne!(config1, config3);
+    }
+
+    #[test]
+    fn test_backend_from_str() {
+        use std::str::FromStr;
+
+        assert_eq!(Backend::from_str("claude").unwrap(), Backend::Claude);
+        assert_eq!(Backend::from_str("cursor").unwrap(), Backend::Cursor);
+        assert_eq!(Backend::from_str("CLAUDE").unwrap(), Backend::Claude);
+        assert_eq!(Backend::from_str("CURSOR").unwrap(), Backend::Cursor);
+        assert_eq!(Backend::from_str("Claude").unwrap(), Backend::Claude);
+        assert_eq!(Backend::from_str("Cursor").unwrap(), Backend::Cursor);
+
+        assert!(Backend::from_str("invalid").is_err());
+        assert!(Backend::from_str("").is_err());
+    }
+
+    #[test]
+    fn test_backend_display() {
+        assert_eq!(Backend::Claude.to_string(), "claude");
+        assert_eq!(Backend::Cursor.to_string(), "cursor");
+    }
+
+    #[test]
+    fn test_cli_backend_override() {
+        let config = Config::default().with_cli_overrides(None, None, Some("cursor".to_string()));
+
+        assert_eq!(config.agent.backend, Backend::Cursor);
+    }
+
+    #[test]
+    fn test_cli_overrides_only_backend() {
+        let config = Config::default().with_cli_overrides(None, None, Some("claude".to_string()));
+
+        assert_eq!(config.agent.backend, Backend::Claude);
+        assert_eq!(config.agent.claude_path, "claude"); // default
+        assert_eq!(config.agent.model, None); // default
+    }
+
+    #[test]
+    fn test_cli_invalid_backend_ignored() {
+        let config = Config::default().with_cli_overrides(None, None, Some("invalid".to_string()));
+
+        // Invalid backend should be ignored, keeping the default
+        assert_eq!(config.agent.backend, Backend::Claude);
     }
 }
