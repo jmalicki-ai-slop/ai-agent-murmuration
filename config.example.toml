@@ -1,43 +1,101 @@
 # Murmur Configuration Example
 #
-# This configuration demonstrates per-agent-type backend and model selection.
-# Copy to ~/.config/murmur/config.toml to use.
+# Copy this file to ~/.config/murmur/config.toml and customize as needed.
+# All settings are optional - Murmur works with sensible defaults.
+#
+# See docs/configuration.md for complete documentation.
 
 [agent]
-# Global defaults - used when no per-type config specified
+# Backend to use for running agents
+# Options: "claude", "cursor"
+# Default: "claude"
 backend = "claude"
-model = "claude-opus-4-5-20251101"
 
-# Paths to AI coding tool executables
+# Global default model to use
+# Leave empty to use the backend's default model
+# Examples:
+#   - "claude-sonnet-4-20250514"
+#   - "claude-haiku-4-20250514"
+# Default: (empty - uses backend default)
+# model = "claude-sonnet-4-20250514"
+
+# Path to the claude executable
+# Default: "claude" (searches PATH)
 claude_path = "claude"
-cursor_path = "cursor-agent"
 
-# Per-agent-type configuration
-# Each type can have its own backend and model override
+# Path to the cursor executable (only needed if using cursor backend)
+# Default: (empty)
+# cursor_path = "/usr/local/bin/cursor"
+
+# Per-agent-type configuration overrides
+# Each agent type can override the global backend and/or model settings
+# This enables cost optimization (e.g., using cheaper models for reviews)
 
 [agent.implement]
-# Use the best model for coding tasks
-backend = "claude"
-model = "claude-opus-4-5-20251101"
+# Configuration for implement agents (write production code)
+# Use your most capable model here for best code quality
+# model = "claude-sonnet-4-20250514"
+# backend = "claude"
 
 [agent.test]
-# Can use cheaper backend for test generation
-backend = "cursor"
-# model uses cursor's default
+# Configuration for test agents (write and run tests)
+# model = "claude-sonnet-4-20250514"
+# backend = "claude"
 
 [agent.review]
-# Use high-end model for thorough code review
-backend = "claude"
-model = "claude-opus-4-5-20251101"
+# Configuration for review agents (code review and feedback)
+# Good candidate for cost optimization - reviews don't need the most expensive model
+# model = "claude-haiku-4-20250514"
+# backend = "claude"
 
 [agent.coordinator]
-# Coordinator tasks are simpler - use unlimited/cheaper backend
-backend = "cursor"
-# model uses cursor's default
+# Configuration for coordinator agents (multi-agent orchestration)
+# model = "claude-sonnet-4-20250514"
+# backend = "claude"
 
 [workflow]
-# Automatically push branch after agent completion
+# Workflow automation settings
+# Control which steps are automated after agent completion
+
+# Automatically commit uncommitted changes after agent completion
+# Default: true
+auto_commit = true
+
+# Automatically push branch to remote after agent completion
+# Default: true
 auto_push = true
 
-# Automatically create PR after agent completion
+# Automatically create pull request after agent completion
+# Requires GitHub token with PR write permissions
+# Default: true
 auto_pr = true
+
+# Automatically re-spawn agent to address review feedback
+# This is opt-in due to potential cost implications
+# Default: false
+auto_review_loop = false
+
+# Example configurations for different use cases:
+
+# Minimal (use defaults):
+# [agent]
+# (nothing needed - defaults work great)
+
+# Cost-optimized:
+# [agent]
+# model = "claude-sonnet-4-20250514"
+# [agent.review]
+# model = "claude-haiku-4-20250514"  # Cheaper for reviews
+
+# Development (manual PR creation):
+# [workflow]
+# auto_commit = true
+# auto_push = false
+# auto_pr = false
+
+# Full automation:
+# [workflow]
+# auto_commit = true
+# auto_push = true
+# auto_pr = true
+# auto_review_loop = true

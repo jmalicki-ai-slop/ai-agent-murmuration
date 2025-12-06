@@ -9,7 +9,7 @@ use murmur_core::{Config, GitRepo, Secrets};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use commands::{
-    AgentArgs, IssueArgs, OrchestrateArgs, RunArgs, StatusArgs, WorkArgs, WorktreeArgs,
+    AgentArgs, IssueArgs, OrchestrateArgs, RunArgs, StatusArgs, TddArgs, WorkArgs, WorktreeArgs,
 };
 
 /// Try to detect the GitHub repo from the current directory
@@ -106,6 +106,9 @@ enum Commands {
     #[command(visible_alias = "s")]
     Status(StatusArgs),
 
+    /// Run a Test-Driven Development workflow
+    Tdd(TddArgs),
+
     /// Show current configuration
     Config,
 
@@ -176,6 +179,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::Status(args)) => {
             args.execute(cli.verbose, cli.no_emoji).await?;
+        }
+        Some(Commands::Tdd(args)) => {
+            args.execute(cli.verbose, cli.no_emoji, &config).await?;
         }
         Some(Commands::Config) => {
             println!("Murmur Configuration");
