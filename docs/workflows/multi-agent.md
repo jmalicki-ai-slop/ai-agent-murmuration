@@ -282,12 +282,14 @@ murmur worktree clean --older-than 7
 murmur worktree clean --all --delete-branches
 ```
 
-### 5. Stale Worktrees
+### 5. Orphaned Worktrees
 
-Worktrees become stale when:
-- Directory exists in DB but not on disk
+Worktrees become orphaned when:
 - Agent crashed or was killed
-- Manual deletion
+- Manual termination of agent process
+- Agent completed but worktree remains
+
+These are worktrees that exist on disk but have no running agent associated with them (as shown by `murmur status`).
 
 Clean them up:
 
@@ -506,14 +508,16 @@ git rebase origin/main
 git push --force-with-lease
 ```
 
-### Agent Crashes Leave Stale Worktrees
+### Agent Crashes Leave Orphaned Worktrees
 
-**Problem:** Agent fails, worktree remains "active" in database.
+**Problem:** Agent fails or is killed, worktree remains on disk with no running agent.
 
 **Solution:**
 ```bash
 murmur worktree clean --stale-only
 ```
+
+This cleans up worktrees that exist on disk but have no running agent (matching what `murmur status` shows as "Stale Worktrees").
 
 ## Future Enhancements
 

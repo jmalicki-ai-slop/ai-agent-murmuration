@@ -378,7 +378,7 @@ murmur worktree clean [OPTIONS]
 | `--all` | boolean | false | Clean all non-active worktrees |
 | `--older-than <DAYS>` | number | - | Clean worktrees older than N days |
 | `--repo <REPO>`, `-r` | string | all repos | Filter by repository name |
-| `--stale-only` | boolean | false | Only clean stale worktrees (exist in DB but not on disk) |
+| `--stale-only` | boolean | false | Only clean orphaned worktrees (exist on disk but no running agent) |
 | `--delete-branches` | boolean | false | Also delete associated git branches |
 | `--verbose`, `-v` | boolean | false | Show detailed information |
 
@@ -394,7 +394,7 @@ Clean all inactive worktrees:
 murmur worktree clean --all
 ```
 
-Clean stale entries only:
+Clean orphaned worktrees (exist on disk but have no running agent):
 ```bash
 murmur worktree clean --stale-only
 ```

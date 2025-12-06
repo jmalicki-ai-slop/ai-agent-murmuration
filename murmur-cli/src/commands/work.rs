@@ -361,6 +361,17 @@ impl WorkArgs {
 
         let info = git_repo.create_cached_worktree(&point, &worktree_options)?;
 
+        // If --force was used, ensure the database record for this path is also deleted
+        // (it might not have been found by branch name earlier, e.g., if the path format differs)
+        if self.force {
+            let worktree_repo = WorktreeRepository::new(&db);
+            if let Err(e) = worktree_repo.delete_by_path(&info.path.to_string_lossy()) {
+                if verbose {
+                    eprintln!("Note: No existing DB record to clean up for path: {}", e);
+                }
+            }
+        }
+
         println!("  Created: {}", info.path.display());
         println!("  Branch:  {}", info.branch);
         println!();
