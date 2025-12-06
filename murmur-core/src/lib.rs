@@ -29,5 +29,5 @@ pub use secrets::{GitHubSecrets, Secrets};
 pub use workflow::{
     build_resume_prompt, find_incomplete_runs, find_latest_incomplete_run,
     reconstruct_conversation, ConversationMessage, PhaseValidation, ResumableRun, StateMachine,
-    Workflow,
+    TddPhase, TddState, TddTransition, TddWorkflow, Workflow,
 };
