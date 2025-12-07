@@ -5,6 +5,7 @@
 
 // Temporarily commented out due to unresolved imports - these are existing issues
 // pub mod coordinator;
+pub mod gates;
 pub mod resume;
 // pub mod review;
 pub mod state;
@@ -16,6 +17,7 @@ pub mod transitions;
 //     CoordinatorConfig, CoordinatorPhase, CoordinatorState, CoordinatorWorkflow, PhaseTransition,
 //     SubTask, SubTaskStatus,
 // };
+pub use gates::{GateConfig, GateResult, GateState, GatedTddState, PhaseGateManager, ReviewGate};
 pub use resume::{
     build_resume_prompt, find_incomplete_runs, find_latest_incomplete_run,
     reconstruct_conversation, ConversationMessage, ResumableRun,

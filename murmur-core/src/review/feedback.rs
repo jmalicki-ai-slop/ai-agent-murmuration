@@ -257,6 +257,7 @@ impl ReviewFeedback {
 }
 
 /// Parser for extracting structured feedback from reviewer output
+#[derive(Debug)]
 pub struct FeedbackParser {
     /// Whether to be lenient with parsing (try to extract what we can)
     lenient: bool,
