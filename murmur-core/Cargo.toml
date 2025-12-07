@@ -20,6 +20,7 @@ thiserror.workspace = true
 tracing.workspace = true
 murmur-db.workspace = true
 chrono.workspace = true
+regex.workspace = true
 
 [dev-dependencies]
 tempfile = "3.15"

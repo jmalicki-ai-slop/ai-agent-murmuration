@@ -47,6 +47,9 @@ octocrab = "0.41"
 chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json"] }
 
+# Text processing
+regex = "1.11"
+
 # Internal crates
 murmur-core = { path = "murmur-core" }
 murmur-github = { path = "murmur-github" }
