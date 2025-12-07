@@ -1,11 +1,13 @@
 //! Workflow module for coordinating agent interactions
 //!
 //! This module provides workflow patterns like TDD (Test-Driven Development)
-//! that coordinate multiple agents working together.
+//! that coordinate multiple agents working together. It includes iteration
+//! tracking for retry loops and phase transitions.
 
 // Temporarily commented out due to unresolved imports - these are existing issues
 // pub mod coordinator;
 pub mod gates;
+pub mod iteration;
 pub mod resume;
 // pub mod review;
 pub mod state;
@@ -18,6 +20,10 @@ pub mod transitions;
 //     SubTask, SubTaskStatus,
 // };
 pub use gates::{GateConfig, GateResult, GateState, GatedTddState, PhaseGateManager, ReviewGate};
+pub use iteration::{
+    check_iteration, IterationAttempt, IterationCheck, IterationConfig, IterationContext,
+    IterationManager, IterationStatus, IterationSummary, IterationTracker,
+};
 pub use resume::{
     build_resume_prompt, find_incomplete_runs, find_latest_incomplete_run,
     reconstruct_conversation, ConversationMessage, ResumableRun,
