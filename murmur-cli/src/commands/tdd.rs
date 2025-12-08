@@ -1,6 +1,16 @@
 //! TDD command - Run a Test-Driven Development workflow
 //!
-//! This command coordinates the TDD phases:
+//! NOTE: This command is deprecated in favor of `murmur work --tdd <issue>`.
+//! For standalone TDD without an issue, this command runs the TDD workflow
+//! in the current directory without GitHub integration.
+//!
+//! For new projects, prefer using `murmur work --tdd <issue>` to get:
+//! - GitHub issue tracking
+//! - Worktree isolation
+//! - Auto-commit, push, and PR creation
+//! - Dependency checking
+//!
+//! The TDD workflow phases:
 //! 1. WriteSpec: Write specification document
 //! 2. WriteTests: Write tests based on spec
 //! 3. VerifyRed: Verify tests fail
@@ -17,7 +27,10 @@ use murmur_core::{
     AgentFactory, AgentType, Config, OutputStreamer, PrintHandler, TddPhase, TddWorkflow,
 };
 
-/// Arguments for the tdd command
+/// Arguments for the tdd command (standalone TDD without issue tracking)
+///
+/// DEPRECATED: Consider using `murmur work --tdd <issue>` for full integration
+/// with GitHub issues, worktrees, and auto-PR creation.
 #[derive(Args, Debug)]
 pub struct TddArgs {
     /// The behavior to implement using TDD
@@ -46,13 +59,18 @@ pub struct TddArgs {
 }
 
 impl TddArgs {
-    /// Execute the TDD workflow
+    /// Execute the TDD workflow (standalone mode without issue tracking)
     pub async fn execute(
         &self,
         verbose: bool,
         no_emoji: bool,
         config: &Config,
     ) -> anyhow::Result<()> {
+        // Show deprecation notice
+        eprintln!("Note: `murmur tdd` runs TDD without issue tracking.");
+        eprintln!("      Consider using `murmur work --tdd <issue>` for full GitHub integration.");
+        eprintln!();
+
         // Resolve to absolute path
         let workdir = if self.workdir.is_absolute() {
             self.workdir.clone()
@@ -95,8 +113,8 @@ impl TddArgs {
             };
         }
 
-        println!("TDD Workflow");
-        println!("============");
+        println!("TDD Workflow (Standalone)");
+        println!("=========================");
         println!();
         println!("Behavior: {}", self.behavior);
         println!("Working directory: {}", workdir.display());
