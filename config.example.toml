@@ -14,10 +14,11 @@ backend = "claude"
 # Global default model to use
 # Leave empty to use the backend's default model
 # Examples:
-#   - "claude-sonnet-4-20250514"
-#   - "claude-haiku-4-20250514"
+#   - "claude-opus-4-5-20251101" (highest quality)
+#   - "claude-sonnet-4-20250514" (balanced)
+#   - "claude-haiku-4-20250514" (fast/cheap)
 # Default: (empty - uses backend default)
-# model = "claude-sonnet-4-20250514"
+model = "claude-opus-4-5-20251101"
 
 # Path to the claude executable
 # Default: "claude" (searches PATH)
@@ -25,33 +26,35 @@ claude_path = "claude"
 
 # Path to the cursor executable (only needed if using cursor backend)
 # Default: (empty)
-# cursor_path = "/usr/local/bin/cursor"
+cursor_path = "cursor-agent"
 
 # Per-agent-type configuration overrides
 # Each agent type can override the global backend and/or model settings
-# This enables cost optimization (e.g., using cheaper models for reviews)
+# This enables intelligent routing based on task complexity and cost optimization
 
 [agent.implement]
 # Configuration for implement agents (write production code)
 # Use your most capable model here for best code quality
-# model = "claude-sonnet-4-20250514"
-# backend = "claude"
+backend = "claude"
+model = "claude-opus-4-5-20251101"
 
 [agent.test]
 # Configuration for test agents (write and run tests)
-# model = "claude-sonnet-4-20250514"
-# backend = "claude"
+# Can use a cheaper backend if you have unlimited quota elsewhere
+backend = "cursor"
+# model uses cursor's default
 
 [agent.review]
 # Configuration for review agents (code review and feedback)
-# Good candidate for cost optimization - reviews don't need the most expensive model
-# model = "claude-haiku-4-20250514"
-# backend = "claude"
+# High-end model recommended for critical review quality
+backend = "claude"
+model = "claude-opus-4-5-20251101"
 
 [agent.coordinator]
 # Configuration for coordinator agents (multi-agent orchestration)
-# model = "claude-sonnet-4-20250514"
-# backend = "claude"
+# Good candidate for cheaper backend - orchestration is less complex
+backend = "cursor"
+# model uses cursor's default
 
 [workflow]
 # Workflow automation settings
@@ -77,23 +80,62 @@ auto_review_loop = false
 
 # Example configurations for different use cases:
 
+# ============================================================================
+# RECOMMENDED: Quality-Focused with Cost Optimization
+# Use Opus for critical tasks (implement, review), cheaper backend for others
+# ============================================================================
+# [agent]
+# backend = "claude"
+# model = "claude-opus-4-5-20251101"
+# claude_path = "claude"
+# cursor_path = "cursor-agent"
+#
+# [agent.implement]
+# backend = "claude"
+# model = "claude-opus-4-5-20251101"  # Best model for coding
+#
+# [agent.test]
+# backend = "cursor"  # Cheaper for test generation
+#
+# [agent.review]
+# backend = "claude"
+# model = "claude-opus-4-5-20251101"  # High-end for review quality
+#
+# [agent.coordinator]
+# backend = "cursor"  # Unlimited for orchestration tasks
+
+# ============================================================================
 # Minimal (use defaults):
+# ============================================================================
 # [agent]
 # (nothing needed - defaults work great)
 
-# Cost-optimized:
+# ============================================================================
+# Claude-Only with Model Tiers:
+# ============================================================================
 # [agent]
 # model = "claude-sonnet-4-20250514"
+#
+# [agent.implement]
+# model = "claude-opus-4-5-20251101"  # Best for code
+#
 # [agent.review]
 # model = "claude-haiku-4-20250514"  # Cheaper for reviews
+#
+# [agent.test]
+# model = "claude-sonnet-4-20250514"  # Balanced for tests
 
+# ============================================================================
 # Development (manual PR creation):
+# ============================================================================
 # [workflow]
 # auto_commit = true
 # auto_push = false
 # auto_pr = false
 
+# ============================================================================
 # Full automation:
+# ============================================================================
 # [workflow]
 # auto_commit = true
 # auto_push = true
