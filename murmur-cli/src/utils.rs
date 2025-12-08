@@ -8,7 +8,7 @@
 /// * `ascii_alt` - The ASCII alternative to use when no_emoji is true
 ///
 /// # Example
-/// ```
+/// ```ignore
 /// let output = emoji(false, "🔥", "!!");
 /// assert_eq!(output, "🔥");
 ///

@@ -669,7 +669,7 @@ impl WorkArgs {
         // Run the TDD cycle
         while !workflow.is_complete() && !workflow.should_give_up() {
             let phase = workflow.phase();
-            let phase_num = phase_number(&phase);
+            let phase_num = phase_number(&phase, self.skip_spec);
             let total_phases = if self.skip_spec { 6 } else { 7 };
 
             println!(
@@ -1230,8 +1230,10 @@ fn build_prompt_from_issue(issue: &murmur_github::Issue) -> String {
 }
 
 /// Get the phase number for display
-fn phase_number(phase: &TddPhase) -> u32 {
-    match phase {
+///
+/// When `skip_spec` is true, phase numbers are adjusted so WriteTests becomes phase 1.
+fn phase_number(phase: &TddPhase, skip_spec: bool) -> u32 {
+    let base = match phase {
         TddPhase::WriteSpec => 1,
         TddPhase::WriteTests => 2,
         TddPhase::VerifyRed => 3,
@@ -1239,6 +1241,11 @@ fn phase_number(phase: &TddPhase) -> u32 {
         TddPhase::VerifyGreen => 5,
         TddPhase::Refactor => 6,
         TddPhase::Complete => 7,
+    };
+    if skip_spec && base > 1 {
+        base - 1
+    } else {
+        base
     }
 }
 
