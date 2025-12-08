@@ -43,17 +43,19 @@ pub struct WorkArgs {
     #[arg(long)]
     pub tdd: bool,
 
-    /// Skip the WriteSpec phase (start from WriteTests) - only with --tdd
-    #[arg(long)]
-    pub skip_spec: bool,
+    pub async fn execute(
+        &self,
+        verbose: bool,
+        no_emoji: bool,
+        config: &Config,
+        repo: Option<&str>,
+    ) -> anyhow::Result<()> {
+        // Validate TDD-only flags
+        if !self.tdd && (self.skip_spec || self.skip_refactor || self.max_iterations != 3) {
+            anyhow::bail!("Flags --skip-spec, --skip-refactor, and --max-iterations require --tdd");
+        }
 
-    /// Skip the Refactor phase (go straight to Complete after VerifyGreen) - only with --tdd
-    #[arg(long)]
-    pub skip_refactor: bool,
-
-    /// Maximum iterations for Implement->VerifyGreen loop - only with --tdd
-    #[arg(long, default_value = "3")]
-    pub max_iterations: u32,
+        let repo_str = self.repo.as_deref().or(repo).ok_or_else(|| {
 }
 
 impl WorkArgs {
