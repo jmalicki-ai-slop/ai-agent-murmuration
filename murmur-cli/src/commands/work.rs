@@ -1,5 +1,6 @@
 //! Work command - start working on an issue with dependency checking
 
+use crate::utils::emoji;
 use clap::Args;
 use murmur_core::workflow::{TestFramework, TestRunner};
 use murmur_core::{
@@ -43,6 +44,21 @@ pub struct WorkArgs {
     #[arg(long)]
     pub tdd: bool,
 
+    /// Skip the WriteSpec phase (start from WriteTests) - only with --tdd
+    #[arg(long)]
+    pub skip_spec: bool,
+
+    /// Skip the Refactor phase (go straight to Complete after VerifyGreen) - only with --tdd
+    #[arg(long)]
+    pub skip_refactor: bool,
+
+    /// Maximum iterations for Implement->VerifyGreen loop - only with --tdd
+    #[arg(long, default_value = "3")]
+    pub max_iterations: u32,
+}
+
+impl WorkArgs {
+    /// Execute the work command
     pub async fn execute(
         &self,
         verbose: bool,
@@ -55,18 +71,6 @@ pub struct WorkArgs {
             anyhow::bail!("Flags --skip-spec, --skip-refactor, and --max-iterations require --tdd");
         }
 
-        let repo_str = self.repo.as_deref().or(repo).ok_or_else(|| {
-}
-
-impl WorkArgs {
-    /// Execute the work command
-    pub async fn execute(
-        &self,
-        verbose: bool,
-        no_emoji: bool,
-        config: &Config,
-        repo: Option<&str>,
-    ) -> anyhow::Result<()> {
         let repo_str = self.repo.as_deref().or(repo).ok_or_else(|| {
             anyhow::anyhow!(
                 "No repository specified. Use --repo owner/repo or run from a git repository"
@@ -1143,15 +1147,6 @@ impl WorkArgs {
         }
 
         Ok(())
-    }
-}
-
-/// Get emoji or ASCII alternative based on no_emoji flag
-fn emoji<'a>(no_emoji: bool, emoji_char: &'a str, ascii_alt: &'a str) -> &'a str {
-    if no_emoji {
-        ascii_alt
-    } else {
-        emoji_char
     }
 }
 

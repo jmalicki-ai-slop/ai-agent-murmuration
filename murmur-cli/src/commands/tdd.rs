@@ -21,6 +21,7 @@
 
 use std::path::PathBuf;
 
+use crate::utils::emoji;
 use clap::Args;
 use murmur_core::workflow::{TestFramework, TestRunner};
 use murmur_core::{
@@ -102,17 +103,6 @@ impl TddArgs {
         }
         workflow.state_mut().max_iterations = self.max_iterations;
 
-        // Helper macro for emoji/ASCII output
-        macro_rules! emoji {
-            ($e:expr, $ascii:expr) => {
-                if no_emoji {
-                    $ascii
-                } else {
-                    $e
-                }
-            };
-        }
-
         println!("TDD Workflow (Standalone)");
         println!("=========================");
         println!();
@@ -151,7 +141,7 @@ impl TddArgs {
                 "Phase {}/{}: {} {}",
                 phase_num,
                 total_phases,
-                emoji!(phase_emoji(&phase), phase_ascii(&phase)),
+                emoji(no_emoji, phase_emoji(&phase), phase_ascii(&phase)),
                 phase.description()
             );
             println!();
@@ -196,13 +186,13 @@ impl TddArgs {
 
                     if status.success() {
                         println!();
-                        println!("{} Phase completed", emoji!("✅", "[OK]"));
+                        println!("{} Phase completed", emoji(no_emoji, "✅", "[OK]"));
                         workflow.advance(true, None);
                     } else {
                         println!();
                         println!(
                             "{} Agent exited with status: {}",
-                            emoji!("❌", "[FAIL]"),
+                            emoji(no_emoji, "❌", "[FAIL]"),
                             status
                         );
                         // Don't advance, let user decide what to do
@@ -227,14 +217,14 @@ impl TddArgs {
                         println!();
                         println!(
                             "{} Tests failed as expected (red phase)",
-                            emoji!("✅", "[OK]")
+                            emoji(no_emoji, "✅", "[OK]")
                         );
                         workflow.advance(true, None);
                     } else if results.passed > 0 && results.failed == 0 {
                         println!();
                         println!(
                             "{} Tests passed unexpectedly - tests may not be testing new behavior",
-                            emoji!("⚠️", "[WARN]")
+                            emoji(no_emoji, "⚠️", "[WARN]")
                         );
                         println!("Going back to WriteTests phase...");
                         workflow.retry_tests(Some("Tests passed unexpectedly".to_string()));
@@ -242,7 +232,7 @@ impl TddArgs {
                         println!();
                         println!(
                             "{} No tests found or error running tests",
-                            emoji!("❌", "[FAIL]")
+                            emoji(no_emoji, "❌", "[FAIL]")
                         );
                         workflow.retry_tests(Some("No tests found".to_string()));
                     }
@@ -265,13 +255,16 @@ impl TddArgs {
 
                     if results.is_green() {
                         println!();
-                        println!("{} All tests pass (green phase)", emoji!("✅", "[OK]"));
+                        println!(
+                            "{} All tests pass (green phase)",
+                            emoji(no_emoji, "✅", "[OK]")
+                        );
                         workflow.advance(true, None);
                     } else {
                         println!();
                         println!(
                             "{} {} tests still failing",
-                            emoji!("❌", "[FAIL]"),
+                            emoji(no_emoji, "❌", "[FAIL]"),
                             results.failed
                         );
 
@@ -279,7 +272,7 @@ impl TddArgs {
                             println!();
                             println!(
                                 "{} Maximum iterations reached, giving up",
-                                emoji!("🛑", "[STOP]")
+                                emoji(no_emoji, "🛑", "[STOP]")
                             );
                         } else {
                             println!("Returning to Implement phase...");
@@ -301,14 +294,14 @@ impl TddArgs {
             println!("═══════════════════════════════════════");
             println!(
                 "{} TDD workflow completed successfully!",
-                emoji!("🎉", "[DONE]")
+                emoji(no_emoji, "🎉", "[DONE]")
             );
             println!("═══════════════════════════════════════");
         } else if workflow.should_give_up() {
             println!("═══════════════════════════════════════");
             println!(
                 "{} TDD workflow failed after {} iterations",
-                emoji!("💥", "[FAIL]"),
+                emoji(no_emoji, "💥", "[FAIL]"),
                 workflow.state().iterations
             );
             println!("═══════════════════════════════════════");
