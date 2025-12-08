@@ -16,20 +16,29 @@ use std::time::Duration;
 use crate::agent::AgentType;
 
 /// Configuration for the coordinator agent
+///
+/// # Field Constraints
+///
+/// - `max_retries`: Must be >= 1 (at least one attempt)
+/// - `max_iterations`: Must be >= 1 (at least one iteration)
+/// - `agent_timeout`: Must be >= 1 second
+/// - `workflow_timeout`: Must be >= agent_timeout
+///
+/// Use [`CoordinatorConfig::validate()`] to check these constraints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CoordinatorConfig {
-    /// Maximum number of retry attempts for a failed agent task
+    /// Maximum number of retry attempts for a failed agent task (min: 1)
     pub max_retries: u32,
 
-    /// Maximum number of iterations for the feedback loop
+    /// Maximum number of iterations for the feedback loop (min: 1)
     pub max_iterations: u32,
 
-    /// Timeout for individual agent tasks
+    /// Timeout for individual agent tasks (min: 1 second)
     #[serde(with = "humantime_serde")]
     pub agent_timeout: Duration,
 
-    /// Timeout for the entire coordination workflow
+    /// Timeout for the entire coordination workflow (must be >= agent_timeout)
     #[serde(with = "humantime_serde")]
     pub workflow_timeout: Duration,
 
@@ -53,6 +62,72 @@ impl Default for CoordinatorConfig {
             auto_escalate: true,
             require_review: true,
             use_tdd: true,
+        }
+    }
+}
+
+/// Error returned when config validation fails
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigValidationError {
+    /// List of validation errors found
+    pub errors: Vec<String>,
+}
+
+impl std::fmt::Display for ConfigValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Config validation failed: {}", self.errors.join("; "))
+    }
+}
+
+impl std::error::Error for ConfigValidationError {}
+
+impl CoordinatorConfig {
+    /// Validate the configuration constraints
+    ///
+    /// Returns `Ok(())` if all constraints are satisfied, or an error
+    /// listing all validation failures.
+    ///
+    /// # Constraints
+    ///
+    /// - `max_retries` must be >= 1
+    /// - `max_iterations` must be >= 1
+    /// - `agent_timeout` must be >= 1 second
+    /// - `workflow_timeout` must be >= `agent_timeout`
+    pub fn validate(&self) -> Result<(), ConfigValidationError> {
+        let mut errors = Vec::new();
+
+        if self.max_retries < 1 {
+            errors.push(format!(
+                "max_retries must be >= 1, got {}",
+                self.max_retries
+            ));
+        }
+
+        if self.max_iterations < 1 {
+            errors.push(format!(
+                "max_iterations must be >= 1, got {}",
+                self.max_iterations
+            ));
+        }
+
+        if self.agent_timeout < Duration::from_secs(1) {
+            errors.push(format!(
+                "agent_timeout must be >= 1 second, got {:?}",
+                self.agent_timeout
+            ));
+        }
+
+        if self.workflow_timeout < self.agent_timeout {
+            errors.push(format!(
+                "workflow_timeout ({:?}) must be >= agent_timeout ({:?})",
+                self.workflow_timeout, self.agent_timeout
+            ));
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(ConfigValidationError { errors })
         }
     }
 }
@@ -816,5 +891,97 @@ mod tests {
                 serde_json::from_str(&json).expect("Failed to deserialize status");
             assert_eq!(status, deserialized);
         }
+    }
+
+    #[test]
+    fn test_coordinator_config_validate_default() {
+        let config = CoordinatorConfig::default();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_coordinator_config_validate_custom_valid() {
+        let config = CoordinatorConfig {
+            max_retries: 1,
+            max_iterations: 1,
+            agent_timeout: Duration::from_secs(1),
+            workflow_timeout: Duration::from_secs(1),
+            auto_escalate: false,
+            require_review: false,
+            use_tdd: false,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_coordinator_config_validate_max_retries_zero() {
+        let config = CoordinatorConfig {
+            max_retries: 0,
+            ..Default::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert_eq!(err.errors.len(), 1);
+        assert!(err.errors[0].contains("max_retries"));
+    }
+
+    #[test]
+    fn test_coordinator_config_validate_max_iterations_zero() {
+        let config = CoordinatorConfig {
+            max_iterations: 0,
+            ..Default::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert_eq!(err.errors.len(), 1);
+        assert!(err.errors[0].contains("max_iterations"));
+    }
+
+    #[test]
+    fn test_coordinator_config_validate_agent_timeout_zero() {
+        let config = CoordinatorConfig {
+            agent_timeout: Duration::from_secs(0),
+            ..Default::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert_eq!(err.errors.len(), 1);
+        assert!(err.errors[0].contains("agent_timeout"));
+    }
+
+    #[test]
+    fn test_coordinator_config_validate_workflow_timeout_less_than_agent() {
+        let config = CoordinatorConfig {
+            agent_timeout: Duration::from_secs(600),
+            workflow_timeout: Duration::from_secs(300),
+            ..Default::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert_eq!(err.errors.len(), 1);
+        assert!(err.errors[0].contains("workflow_timeout"));
+    }
+
+    #[test]
+    fn test_coordinator_config_validate_multiple_errors() {
+        let config = CoordinatorConfig {
+            max_retries: 0,
+            max_iterations: 0,
+            agent_timeout: Duration::from_secs(0),
+            workflow_timeout: Duration::from_secs(0),
+            auto_escalate: false,
+            require_review: false,
+            use_tdd: false,
+        };
+        let err = config.validate().unwrap_err();
+        // Should have errors for max_retries, max_iterations, and agent_timeout
+        // (workflow_timeout >= agent_timeout since both are 0)
+        assert_eq!(err.errors.len(), 3);
+    }
+
+    #[test]
+    fn test_config_validation_error_display() {
+        let err = ConfigValidationError {
+            errors: vec!["error1".to_string(), "error2".to_string()],
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("error1"));
+        assert!(display.contains("error2"));
     }
 }
