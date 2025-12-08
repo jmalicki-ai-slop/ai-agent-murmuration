@@ -3,6 +3,7 @@
 //! Multi-agent orchestration for software development with Claude Code.
 
 mod commands;
+mod utils;
 
 use clap::{Parser, Subcommand};
 use murmur_core::{Config, GitRepo, Secrets};

@@ -39,6 +39,14 @@ impl TypedAgent {
         self.agent_type
     }
 
+    /// Add an environment variable to be passed to the agent process
+    ///
+    /// This is useful for passing secrets like GITHUB_TOKEN to agents.
+    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.spawner = self.spawner.with_env(key, value);
+        self
+    }
+
     /// Build and spawn the agent with the given task
     pub async fn spawn_with_task(
         &self,

@@ -1,6 +1,16 @@
 //! TDD command - Run a Test-Driven Development workflow
 //!
-//! This command coordinates the TDD phases:
+//! NOTE: This command is deprecated in favor of `murmur work --tdd <issue>`.
+//! For standalone TDD without an issue, this command runs the TDD workflow
+//! in the current directory without GitHub integration.
+//!
+//! For new projects, prefer using `murmur work --tdd <issue>` to get:
+//! - GitHub issue tracking
+//! - Worktree isolation
+//! - Auto-commit, push, and PR creation
+//! - Dependency checking
+//!
+//! The TDD workflow phases:
 //! 1. WriteSpec: Write specification document
 //! 2. WriteTests: Write tests based on spec
 //! 3. VerifyRed: Verify tests fail
@@ -11,13 +21,17 @@
 
 use std::path::PathBuf;
 
+use crate::utils::emoji;
 use clap::Args;
 use murmur_core::workflow::{TestFramework, TestRunner};
 use murmur_core::{
     AgentFactory, AgentType, Config, OutputStreamer, PrintHandler, TddPhase, TddWorkflow,
 };
 
-/// Arguments for the tdd command
+/// Arguments for the tdd command (standalone TDD without issue tracking)
+///
+/// DEPRECATED: Consider using `murmur work --tdd <issue>` for full integration
+/// with GitHub issues, worktrees, and auto-PR creation.
 #[derive(Args, Debug)]
 pub struct TddArgs {
     /// The behavior to implement using TDD
@@ -46,13 +60,18 @@ pub struct TddArgs {
 }
 
 impl TddArgs {
-    /// Execute the TDD workflow
+    /// Execute the TDD workflow (standalone mode without issue tracking)
     pub async fn execute(
         &self,
         verbose: bool,
         no_emoji: bool,
         config: &Config,
     ) -> anyhow::Result<()> {
+        // Show deprecation notice
+        eprintln!("Note: `murmur tdd` runs TDD without issue tracking.");
+        eprintln!("      Consider using `murmur work --tdd <issue>` for full GitHub integration.");
+        eprintln!();
+
         // Resolve to absolute path
         let workdir = if self.workdir.is_absolute() {
             self.workdir.clone()
@@ -84,19 +103,8 @@ impl TddArgs {
         }
         workflow.state_mut().max_iterations = self.max_iterations;
 
-        // Helper macro for emoji/ASCII output
-        macro_rules! emoji {
-            ($e:expr, $ascii:expr) => {
-                if no_emoji {
-                    $ascii
-                } else {
-                    $e
-                }
-            };
-        }
-
-        println!("TDD Workflow");
-        println!("============");
+        println!("TDD Workflow (Standalone)");
+        println!("=========================");
         println!();
         println!("Behavior: {}", self.behavior);
         println!("Working directory: {}", workdir.display());
@@ -133,7 +141,7 @@ impl TddArgs {
                 "Phase {}/{}: {} {}",
                 phase_num,
                 total_phases,
-                emoji!(phase_emoji(&phase), phase_ascii(&phase)),
+                emoji(no_emoji, phase_emoji(&phase), phase_ascii(&phase)),
                 phase.description()
             );
             println!();
@@ -178,13 +186,13 @@ impl TddArgs {
 
                     if status.success() {
                         println!();
-                        println!("{} Phase completed", emoji!("✅", "[OK]"));
+                        println!("{} Phase completed", emoji(no_emoji, "✅", "[OK]"));
                         workflow.advance(true, None);
                     } else {
                         println!();
                         println!(
                             "{} Agent exited with status: {}",
-                            emoji!("❌", "[FAIL]"),
+                            emoji(no_emoji, "❌", "[FAIL]"),
                             status
                         );
                         // Don't advance, let user decide what to do
@@ -209,14 +217,14 @@ impl TddArgs {
                         println!();
                         println!(
                             "{} Tests failed as expected (red phase)",
-                            emoji!("✅", "[OK]")
+                            emoji(no_emoji, "✅", "[OK]")
                         );
                         workflow.advance(true, None);
                     } else if results.passed > 0 && results.failed == 0 {
                         println!();
                         println!(
                             "{} Tests passed unexpectedly - tests may not be testing new behavior",
-                            emoji!("⚠️", "[WARN]")
+                            emoji(no_emoji, "⚠️", "[WARN]")
                         );
                         println!("Going back to WriteTests phase...");
                         workflow.retry_tests(Some("Tests passed unexpectedly".to_string()));
@@ -224,7 +232,7 @@ impl TddArgs {
                         println!();
                         println!(
                             "{} No tests found or error running tests",
-                            emoji!("❌", "[FAIL]")
+                            emoji(no_emoji, "❌", "[FAIL]")
                         );
                         workflow.retry_tests(Some("No tests found".to_string()));
                     }
@@ -247,13 +255,16 @@ impl TddArgs {
 
                     if results.is_green() {
                         println!();
-                        println!("{} All tests pass (green phase)", emoji!("✅", "[OK]"));
+                        println!(
+                            "{} All tests pass (green phase)",
+                            emoji(no_emoji, "✅", "[OK]")
+                        );
                         workflow.advance(true, None);
                     } else {
                         println!();
                         println!(
                             "{} {} tests still failing",
-                            emoji!("❌", "[FAIL]"),
+                            emoji(no_emoji, "❌", "[FAIL]"),
                             results.failed
                         );
 
@@ -261,7 +272,7 @@ impl TddArgs {
                             println!();
                             println!(
                                 "{} Maximum iterations reached, giving up",
-                                emoji!("🛑", "[STOP]")
+                                emoji(no_emoji, "🛑", "[STOP]")
                             );
                         } else {
                             println!("Returning to Implement phase...");
@@ -283,14 +294,14 @@ impl TddArgs {
             println!("═══════════════════════════════════════");
             println!(
                 "{} TDD workflow completed successfully!",
-                emoji!("🎉", "[DONE]")
+                emoji(no_emoji, "🎉", "[DONE]")
             );
             println!("═══════════════════════════════════════");
         } else if workflow.should_give_up() {
             println!("═══════════════════════════════════════");
             println!(
                 "{} TDD workflow failed after {} iterations",
-                emoji!("💥", "[FAIL]"),
+                emoji(no_emoji, "💥", "[FAIL]"),
                 workflow.state().iterations
             );
             println!("═══════════════════════════════════════");
