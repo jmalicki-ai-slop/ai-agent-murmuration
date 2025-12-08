@@ -78,6 +78,30 @@ auto_pr = true
 # Default: false
 auto_review_loop = false
 
+# Bot review waiting configuration
+# Wait for automated code review bots before proceeding
+[workflow.reviews]
+# Bot usernames to wait for before auto-merge (e.g., ["coderabbitai[bot]", "github-actions[bot]"])
+# Default: [] (no bots to wait for)
+wait_for_bots = ["coderabbitai[bot]"]
+
+# Timeout in minutes (0 = no timeout, wait indefinitely)
+# Default: 0
+bot_review_timeout = 30
+
+# Action on timeout: "merge_anyway", "skip", "fail"
+#   - merge_anyway: Proceed with merge despite missing reviews
+#   - skip: Leave PR open without merging
+#   - fail: Fail the workflow with an error
+# Default: "merge_anyway"
+timeout_action = "merge_anyway"
+
+# Require APPROVED state from bots
+# If false, any review state (COMMENTED, APPROVED, etc.) counts as reviewed
+# If true, only APPROVED reviews count
+# Default: false
+require_bot_approval = false
+
 # Example configurations for different use cases:
 
 # ============================================================================

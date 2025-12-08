@@ -17,7 +17,7 @@ pub use agent::{
     OutputStreamer, PrintHandler, PromptBuilder, PromptContext, ReviewAgent, StreamHandler,
     StreamMessage, TestAgent, TypedAgent,
 };
-pub use config::{AgentConfig, Config};
+pub use config::{AgentConfig, Config, ReviewConfig, TimeoutAction};
 pub use error::{Error, Result};
 pub use git::{
     cached_repo_path, clone_repo, default_cache_dir, default_repos_cache_dir, fetch_repo,

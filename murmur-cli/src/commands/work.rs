@@ -5,7 +5,7 @@ use clap::Args;
 use murmur_core::workflow::{TestFramework, TestRunner};
 use murmur_core::{
     AgentFactory, AgentSpawner, AgentType, BranchingOptions, Config, GitRepo, OutputStreamer,
-    Secrets, TddPhase, TddWorkflow, WorktreeOptions,
+    ReviewConfig, Secrets, TddPhase, TddWorkflow, TimeoutAction, WorktreeOptions,
 };
 use murmur_db::{
     models::{AgentRun, ConversationLog, WorktreeRecord},
@@ -13,6 +13,7 @@ use murmur_db::{
     Database,
 };
 use murmur_github::{DependencyStatus, GitHubClient, IssueDependencies, IssueState};
+use std::time::{Duration, Instant};
 
 /// Work on a GitHub issue
 #[derive(Args, Debug)]
@@ -55,6 +56,17 @@ pub struct WorkArgs {
     /// Maximum iterations for Implement->VerifyGreen loop - only with --tdd
     #[arg(long, default_value = "3")]
     pub max_iterations: u32,
+}
+
+/// Result of waiting for bot reviews
+#[derive(Debug)]
+pub enum BotReviewResult {
+    /// All configured bots have reviewed
+    AllReviewed,
+    /// Timeout reached with pending bots
+    Timeout(Vec<String>),
+    /// No bots configured to wait for
+    NoBots,
 }
 
 impl WorkArgs {
@@ -914,7 +926,7 @@ impl WorkArgs {
         issue: &murmur_github::Issue,
         verbose: bool,
         no_emoji: bool,
-        _client: &GitHubClient,
+        client: &GitHubClient,
     ) -> anyhow::Result<()> {
         use std::process::Command;
 
@@ -1198,7 +1210,60 @@ impl WorkArgs {
             None
         };
 
-        // Step 6: Monitor for review feedback if configured and PR was created
+        // Step 6: Wait for bot reviews if configured and PR was created
+        if let Some(pr_num) = pr_number {
+            if !config.workflow.reviews.wait_for_bots.is_empty() {
+                println!();
+                println!(
+                    "{}  Waiting for bot reviews before merge...",
+                    emoji(no_emoji, "🤖", "[BOT]")
+                );
+
+                match wait_for_bot_reviews(client, pr_num, &config.workflow.reviews, no_emoji).await
+                {
+                    Ok(BotReviewResult::AllReviewed) => {
+                        println!(
+                            "{} All configured bots have reviewed",
+                            emoji(no_emoji, "✅", "[OK]")
+                        );
+                    }
+                    Ok(BotReviewResult::Timeout(pending)) => {
+                        println!(
+                            "{}  Timeout waiting for reviews from: {:?}",
+                            emoji(no_emoji, "⏱️", "[TIMEOUT]"),
+                            pending
+                        );
+                        match config.workflow.reviews.timeout_action {
+                            TimeoutAction::MergeAnyway => {
+                                println!("  Action: merge_anyway - proceeding despite timeout");
+                            }
+                            TimeoutAction::Skip => {
+                                println!("  Action: skip - leaving PR open without merging");
+                            }
+                            TimeoutAction::Fail => {
+                                println!("  Action: fail - workflow failed due to timeout");
+                                return Err(anyhow::anyhow!(
+                                    "Bot review timeout: pending reviews from {:?}",
+                                    pending
+                                ));
+                            }
+                        }
+                    }
+                    Ok(BotReviewResult::NoBots) => {
+                        // Should not happen since we check wait_for_bots.is_empty() above
+                    }
+                    Err(e) => {
+                        println!(
+                            "{}  Error checking bot reviews: {}",
+                            emoji(no_emoji, "⚠️", "[WARN]"),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        // Step 7: Monitor for review feedback if configured and PR was created
         if config.workflow.auto_review_loop && pr_number.is_some() {
             println!();
             println!(
@@ -1210,6 +1275,89 @@ impl WorkArgs {
         }
 
         Ok(())
+    }
+}
+
+/// Wait for configured bot reviews on a PR
+///
+/// Polls the PR reviews at 30-second intervals until either:
+/// - All configured bots have reviewed (any state, or APPROVED if require_bot_approval is true)
+/// - The timeout is reached
+/// - An error occurs
+async fn wait_for_bot_reviews(
+    client: &GitHubClient,
+    pr_number: u64,
+    config: &ReviewConfig,
+    no_emoji: bool,
+) -> anyhow::Result<BotReviewResult> {
+    if config.wait_for_bots.is_empty() {
+        return Ok(BotReviewResult::NoBots);
+    }
+
+    let start = Instant::now();
+    let timeout = if config.bot_review_timeout > 0 {
+        Some(Duration::from_secs(config.bot_review_timeout * 60))
+    } else {
+        None // No timeout - wait indefinitely
+    };
+
+    let poll_interval = Duration::from_secs(30);
+
+    loop {
+        // Fetch current reviews
+        let reviews = client.get_pr_reviews(pr_number).await?;
+
+        // Check which bots have reviewed
+        let mut pending_bots = config.wait_for_bots.clone();
+
+        for review in &reviews {
+            // Check if this review is from a configured bot
+            if let Some(pos) = pending_bots.iter().position(|b| b == &review.author) {
+                // If require_bot_approval is true, only count APPROVED reviews
+                if config.require_bot_approval {
+                    if review.state.contains("Approved") || review.state == "APPROVED" {
+                        pending_bots.remove(pos);
+                    }
+                } else {
+                    // Any review state counts
+                    pending_bots.remove(pos);
+                }
+            }
+        }
+
+        // All bots have reviewed
+        if pending_bots.is_empty() {
+            return Ok(BotReviewResult::AllReviewed);
+        }
+
+        // Check timeout
+        if let Some(timeout_duration) = timeout {
+            if start.elapsed() > timeout_duration {
+                return Ok(BotReviewResult::Timeout(pending_bots));
+            }
+        }
+
+        // Display status
+        println!(
+            "  {} Waiting for reviews from: {:?}",
+            emoji(no_emoji, "⏳", "[WAIT]"),
+            pending_bots
+        );
+
+        // Display existing reviews from configured bots
+        for review in &reviews {
+            if config.wait_for_bots.contains(&review.author) {
+                println!(
+                    "    {} {}: {}",
+                    emoji(no_emoji, "📝", "[REV]"),
+                    review.author,
+                    review.state
+                );
+            }
+        }
+
+        // Wait before next poll
+        tokio::time::sleep(poll_interval).await;
     }
 }
 
