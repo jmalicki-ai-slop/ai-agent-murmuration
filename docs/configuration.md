@@ -166,60 +166,88 @@ auto_review_loop = true  # Experimental: auto-address review comments
 
 Different models have different costs and capabilities. Here are common optimization strategies:
 
-### Strategy 1: Sonnet for Everything (Balanced)
+### Strategy 1: Quality-Focused with Smart Routing (Recommended)
 
-Best for: General use, balanced cost/quality
+Best for: Maximum code quality with cost optimization for orchestration tasks.
+
+Use Claude Opus 4.5 for critical tasks (implementing code, reviewing PRs) while routing simpler orchestration and test generation to a cheaper backend like Cursor (especially if you have unlimited quota).
+
+```toml
+[agent]
+backend = "claude"
+model = "claude-opus-4-5-20251101"
+claude_path = "claude"
+cursor_path = "cursor-agent"
+
+[agent.implement]
+backend = "claude"
+model = "claude-opus-4-5-20251101"  # Best model for coding
+
+[agent.test]
+backend = "cursor"  # Cheaper for test generation
+# model uses cursor's default
+
+[agent.review]
+backend = "claude"
+model = "claude-opus-4-5-20251101"  # High-end for review quality
+
+[agent.coordinator]
+backend = "cursor"  # Unlimited for orchestration tasks
+```
+
+**Why this works:**
+- **Implement agents** need the highest quality model because code correctness matters most
+- **Review agents** benefit from sophisticated reasoning to catch subtle issues
+- **Test agents** can use cheaper backends since test generation is more formulaic
+- **Coordinator agents** mostly orchestrate other agents, not write code directly
+
+### Strategy 2: Claude-Only with Model Tiers
+
+Best for: When you prefer to stay within Claude's ecosystem and optimize by model tier.
+
+```toml
+[agent]
+model = "claude-sonnet-4-20250514"  # Default to Sonnet
+
+[agent.implement]
+model = "claude-opus-4-5-20251101"  # Best for code
+
+[agent.review]
+model = "claude-haiku-4-20250514"   # Cheaper for reviews
+
+[agent.test]
+model = "claude-sonnet-4-20250514"  # Balanced for tests
+```
+
+### Strategy 3: Sonnet for Everything (Balanced)
+
+Best for: General use, balanced cost/quality, simple configuration.
 
 ```toml
 [agent]
 model = "claude-sonnet-4-20250514"
 ```
 
-### Strategy 2: Cost-Optimized (Recommended)
+### Strategy 4: Maximum Quality (All Opus)
 
-Use cheaper models where appropriate:
-
-```toml
-[agent]
-model = "claude-sonnet-4-20250514"  # Default to Sonnet
-
-[agent.implement]
-model = "claude-sonnet-4-20250514"  # Keep Sonnet for code
-
-[agent.review]
-model = "claude-haiku-4-20250514"   # Use Haiku for reviews (cheaper)
-
-[agent.coordinator]
-model = "claude-sonnet-4-20250514"  # Sonnet for orchestration
-```
-
-### Strategy 3: Maximum Quality
-
-Use the most capable model for critical tasks:
+Best for: When quality is paramount and cost is not a concern.
 
 ```toml
 [agent]
-model = "claude-sonnet-4-20250514"  # Default to Sonnet
+model = "claude-opus-4-5-20251101"  # Opus for everything
 
-[agent.implement]
-model = "claude-sonnet-4-20250514"  # Sonnet for complex implementations
-
-[agent.test]
-model = "claude-sonnet-4-20250514"  # Sonnet for thorough testing
-
-[agent.review]
-model = "claude-sonnet-4-20250514"  # Sonnet for detailed review
+# No per-type overrides needed - all agents use Opus
 ```
 
-### Strategy 4: Mixed Backends
+### Strategy 5: Mixed Backends (General)
 
-Use different backends for different agent types:
+Use different backends for different agent types based on your available resources:
 
 ```toml
 [agent]
 backend = "claude"
 claude_path = "claude"
-cursor_path = "cursor"
+cursor_path = "cursor-agent"
 
 [agent.implement]
 backend = "cursor"  # Use Cursor for implementation

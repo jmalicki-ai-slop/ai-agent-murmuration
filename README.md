@@ -65,20 +65,40 @@ murmur work 42 --repo owner/repo
 
 ## Configuration
 
-Create `~/.config/murmur/config.toml`:
+Create `~/.config/murmur/config.toml` (or copy `config.example.toml`):
 
 ```toml
 [agent]
-claude_path = "claude"  # Path to claude executable
-model = "sonnet"        # Model to use (optional)
+backend = "claude"
+model = "claude-opus-4-5-20251101"
+claude_path = "claude"
+cursor_path = "cursor-agent"
+
+# Per-agent-type configuration for intelligent routing
+[agent.implement]
+backend = "claude"
+model = "claude-opus-4-5-20251101"  # Best model for coding
+
+[agent.test]
+backend = "cursor"  # Cheaper for test generation
+
+[agent.review]
+backend = "claude"
+model = "claude-opus-4-5-20251101"  # High-end for review quality
+
+[agent.coordinator]
+backend = "cursor"  # Unlimited for orchestration tasks
 ```
 
 Or use environment variables:
 
 ```bash
 export MURMUR_CLAUDE_PATH=/path/to/claude
-export MURMUR_MODEL=sonnet
+export MURMUR_MODEL=claude-opus-4-5-20251101
+export MURMUR_BACKEND=claude
 ```
+
+See [docs/configuration.md](docs/configuration.md) for detailed configuration options and cost optimization strategies.
 
 ## Project Structure
 
