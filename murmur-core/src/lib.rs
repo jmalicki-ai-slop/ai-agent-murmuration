@@ -5,6 +5,7 @@
 
 pub mod agent;
 pub mod config;
+pub mod coordinator;
 pub mod error;
 pub mod git;
 pub mod plan;
@@ -18,6 +19,9 @@ pub use agent::{
     StreamMessage, TestAgent, TypedAgent,
 };
 pub use config::{AgentConfig, Config};
+pub use coordinator::{
+    CoordinatorConfig, CoordinatorPhase, CoordinatorState, PhaseTransition, SubTask, SubTaskStatus,
+};
 pub use error::{Error, Result};
 pub use git::{
     cached_repo_path, clone_repo, default_cache_dir, default_repos_cache_dir, fetch_repo,
