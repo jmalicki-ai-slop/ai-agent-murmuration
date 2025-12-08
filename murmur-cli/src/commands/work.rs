@@ -656,8 +656,19 @@ impl WorkArgs {
         workflow.state_mut().max_iterations = self.max_iterations;
 
         // Detect test framework
-        let framework = TestFramework::detect(workdir).unwrap_or(TestFramework::Cargo);
-        println!("Detected test framework: {}", framework.name());
+        let framework = match TestFramework::detect(workdir) {
+            Some(f) => {
+                println!("Detected test framework: {}", f.name());
+                f
+            }
+            None => {
+                println!(
+                    "{} Could not detect test framework, defaulting to Cargo",
+                    emoji(no_emoji, "⚠️", "[WARN]")
+                );
+                TestFramework::Cargo
+            }
+        };
         println!();
 
         // Create test runner for validation phases
