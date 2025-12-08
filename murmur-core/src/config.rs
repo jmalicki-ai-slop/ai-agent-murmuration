@@ -164,6 +164,51 @@ impl AgentConfig {
     }
 }
 
+/// Action to take when bot review timeout is reached
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimeoutAction {
+    /// Merge the PR anyway
+    MergeAnyway,
+    /// Skip the merge, leave PR open
+    Skip,
+    /// Fail with an error
+    Fail,
+}
+
+impl Default for TimeoutAction {
+    fn default() -> Self {
+        Self::MergeAnyway
+    }
+}
+
+impl std::fmt::Display for TimeoutAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TimeoutAction::MergeAnyway => write!(f, "merge_anyway"),
+            TimeoutAction::Skip => write!(f, "skip"),
+            TimeoutAction::Fail => write!(f, "fail"),
+        }
+    }
+}
+
+/// Configuration for waiting on bot reviews before auto-merge
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ReviewConfig {
+    /// Bot usernames to wait for (e.g., ["coderabbitai[bot]", "github-actions[bot]"])
+    pub wait_for_bots: Vec<String>,
+
+    /// Timeout in minutes (0 = no timeout, wait indefinitely)
+    pub bot_review_timeout: u64,
+
+    /// Action on timeout: "merge_anyway", "skip", "fail"
+    pub timeout_action: TimeoutAction,
+
+    /// Require APPROVED state from bots (false = just needs to comment)
+    pub require_bot_approval: bool,
+}
+
 /// Workflow automation configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -179,6 +224,9 @@ pub struct WorkflowConfig {
 
     /// Re-spawn agent to address review feedback (opt-in)
     pub auto_review_loop: bool,
+
+    /// Configuration for waiting on bot reviews before auto-merge
+    pub reviews: ReviewConfig,
 }
 
 impl Default for WorkflowConfig {
@@ -188,6 +236,7 @@ impl Default for WorkflowConfig {
             auto_push: true,
             auto_pr: true,
             auto_review_loop: false,
+            reviews: ReviewConfig::default(),
         }
     }
 }
@@ -741,5 +790,108 @@ model = "claude-haiku-4-20250514"
 
         // Invalid backend should be ignored, keeping the default
         assert_eq!(config.agent.backend, Backend::Claude);
+    }
+
+    #[test]
+    fn test_review_config_defaults() {
+        let config = ReviewConfig::default();
+        assert!(config.wait_for_bots.is_empty());
+        assert_eq!(config.bot_review_timeout, 0);
+        assert_eq!(config.timeout_action, TimeoutAction::MergeAnyway);
+        assert!(!config.require_bot_approval);
+    }
+
+    #[test]
+    fn test_timeout_action_default() {
+        assert_eq!(TimeoutAction::default(), TimeoutAction::MergeAnyway);
+    }
+
+    #[test]
+    fn test_timeout_action_display() {
+        assert_eq!(TimeoutAction::MergeAnyway.to_string(), "merge_anyway");
+        assert_eq!(TimeoutAction::Skip.to_string(), "skip");
+        assert_eq!(TimeoutAction::Fail.to_string(), "fail");
+    }
+
+    #[test]
+    fn test_parse_review_config() {
+        let toml = r#"
+[workflow]
+auto_commit = true
+
+[workflow.reviews]
+wait_for_bots = ["coderabbitai[bot]", "github-actions[bot]"]
+bot_review_timeout = 30
+timeout_action = "skip"
+require_bot_approval = true
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.workflow.reviews.wait_for_bots.len(), 2);
+        assert!(config
+            .workflow
+            .reviews
+            .wait_for_bots
+            .contains(&"coderabbitai[bot]".to_string()));
+        assert!(config
+            .workflow
+            .reviews
+            .wait_for_bots
+            .contains(&"github-actions[bot]".to_string()));
+        assert_eq!(config.workflow.reviews.bot_review_timeout, 30);
+        assert_eq!(config.workflow.reviews.timeout_action, TimeoutAction::Skip);
+        assert!(config.workflow.reviews.require_bot_approval);
+    }
+
+    #[test]
+    fn test_parse_timeout_action_variants() {
+        let toml_merge = r#"
+[workflow.reviews]
+timeout_action = "merge_anyway"
+"#;
+        let config: Config = toml::from_str(toml_merge).unwrap();
+        assert_eq!(
+            config.workflow.reviews.timeout_action,
+            TimeoutAction::MergeAnyway
+        );
+
+        let toml_skip = r#"
+[workflow.reviews]
+timeout_action = "skip"
+"#;
+        let config: Config = toml::from_str(toml_skip).unwrap();
+        assert_eq!(config.workflow.reviews.timeout_action, TimeoutAction::Skip);
+
+        let toml_fail = r#"
+[workflow.reviews]
+timeout_action = "fail"
+"#;
+        let config: Config = toml::from_str(toml_fail).unwrap();
+        assert_eq!(config.workflow.reviews.timeout_action, TimeoutAction::Fail);
+    }
+
+    #[test]
+    fn test_workflow_config_includes_reviews() {
+        let config = WorkflowConfig::default();
+        // Default reviews config should be empty
+        assert!(config.reviews.wait_for_bots.is_empty());
+    }
+
+    #[test]
+    fn test_parse_empty_reviews_section() {
+        let toml = r#"
+[workflow]
+auto_commit = true
+
+[workflow.reviews]
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        // Should use defaults
+        assert!(config.workflow.reviews.wait_for_bots.is_empty());
+        assert_eq!(config.workflow.reviews.bot_review_timeout, 0);
+        assert_eq!(
+            config.workflow.reviews.timeout_action,
+            TimeoutAction::MergeAnyway
+        );
+        assert!(!config.workflow.reviews.require_bot_approval);
     }
 }
