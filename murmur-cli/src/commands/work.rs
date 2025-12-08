@@ -5,7 +5,7 @@ use clap::Args;
 use murmur_core::workflow::{TestFramework, TestRunner};
 use murmur_core::{
     AgentFactory, AgentSpawner, AgentType, BranchingOptions, Config, GitRepo, OutputStreamer,
-    PrintHandler, Secrets, TddPhase, TddWorkflow, WorktreeOptions,
+    Secrets, TddPhase, TddWorkflow, WorktreeOptions,
 };
 use murmur_db::{
     models::{AgentRun, ConversationLog, WorktreeRecord},
@@ -426,7 +426,7 @@ impl WorkArgs {
 
         // Branch based on TDD mode
         let workflow_success = if self.tdd {
-            self.run_tdd_workflow(config, &info.path, &issue, verbose, no_emoji)
+            self.run_tdd_workflow(config, &db, &info.path, &issue, verbose, no_emoji)
                 .await?
         } else {
             self.run_standard_workflow(config, &db, &info.path, &issue, verbose, no_emoji)
@@ -609,6 +609,7 @@ impl WorkArgs {
     async fn run_tdd_workflow(
         &self,
         config: &Config,
+        db: &Database,
         workdir: &std::path::Path,
         issue: &murmur_github::Issue,
         verbose: bool,
@@ -695,15 +696,55 @@ impl WorkArgs {
 
                     println!("Starting agent...");
 
+                    // Create agent run record for this phase
+                    let phase_name = format!(
+                        "tdd_{}",
+                        phase.description().to_lowercase().replace(' ', "_")
+                    );
+                    let config_json =
+                        serde_json::to_string(&config.agent).unwrap_or_else(|_| "{}".to_string());
+                    let mut agent_run = AgentRun::new(
+                        &phase_name,
+                        &prompt,
+                        workdir.to_str().unwrap_or(""),
+                        config_json,
+                    )
+                    .with_issue_number(self.issue as i64);
+
+                    let agent_repo = AgentRunRepository::new(db);
+                    let run_id = agent_repo
+                        .insert(&agent_run)
+                        .map_err(|e| anyhow::anyhow!("Failed to create agent run record: {}", e))?;
+                    agent_run.id = Some(run_id);
+
+                    if verbose {
+                        println!("Agent run ID: {}", run_id);
+                    }
+
                     // Choose agent type based on phase
                     let agent_type = match phase {
                         TddPhase::WriteTests => AgentType::Test,
                         _ => AgentType::Implement,
                     };
-                    let typed_agent = factory.create(agent_type);
+                    let mut typed_agent = factory.create(agent_type);
+
+                    // Pass GitHub token to agent via environment variable
+                    if let Ok(secrets) = Secrets::load() {
+                        if let Some(token) = secrets.github_token() {
+                            typed_agent = typed_agent.with_env("GITHUB_TOKEN", token);
+                        }
+                    }
 
                     // Spawn and run agent
                     let mut handle = typed_agent.spawn_with_task(&prompt, workdir).await?;
+
+                    // Update PID in database
+                    if let Some(pid) = handle.pid() {
+                        agent_run.pid = Some(pid as i32);
+                        if let Err(e) = agent_repo.update(&agent_run) {
+                            eprintln!("Warning: Failed to update agent run with PID: {}", e);
+                        }
+                    }
 
                     let stdout = handle
                         .child_mut()
@@ -711,12 +752,23 @@ impl WorkArgs {
                         .take()
                         .ok_or_else(|| anyhow::anyhow!("Failed to capture agent stdout"))?;
 
-                    // Stream output
+                    // Stream output with database logging
                     let mut streamer = OutputStreamer::new(stdout);
-                    let mut handler = PrintHandler::new(verbose);
-                    streamer.stream(&mut handler).await?;
+                    let handler_db = Database::open().map_err(|e| {
+                        anyhow::anyhow!("Failed to open database for handler: {}", e)
+                    })?;
+                    let mut handler = DatabaseLoggingHandler::new(handler_db, run_id, verbose);
+                    if let Err(e) = streamer.stream(&mut handler).await {
+                        eprintln!("Stream error: {}", e);
+                    }
 
                     let status = handle.wait().await?;
+
+                    // Update agent run with completion status
+                    agent_run.complete(status.code().unwrap_or(-1));
+                    if let Err(e) = agent_repo.update(&agent_run) {
+                        eprintln!("Warning: Failed to update agent run record: {}", e);
+                    }
 
                     if status.success() {
                         println!();
