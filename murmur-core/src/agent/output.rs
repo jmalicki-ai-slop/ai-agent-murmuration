@@ -209,7 +209,7 @@ impl OutputStreamer {
     /// Stream output, calling the handler for each message
     ///
     /// Returns when the stream ends (process closes stdout)
-    pub async fn stream<H: StreamHandler>(&mut self, handler: &mut H) -> Result<()> {
+    pub async fn stream<H: StreamHandler + ?Sized>(&mut self, handler: &mut H) -> Result<()> {
         let mut line = String::new();
 
         loop {
@@ -235,7 +235,7 @@ impl OutputStreamer {
         Ok(())
     }
 
-    fn dispatch_message<H: StreamHandler>(handler: &mut H, msg: StreamMessage) {
+    fn dispatch_message<H: StreamHandler + ?Sized>(handler: &mut H, msg: StreamMessage) {
         match msg {
             StreamMessage::System {
                 subtype,

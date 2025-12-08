@@ -6,6 +6,7 @@
 
 // Temporarily commented out due to unresolved imports - these are existing issues
 // pub mod coordinator;
+pub mod executor;
 pub mod gates;
 pub mod iteration;
 pub mod resume;
@@ -37,3 +38,9 @@ pub use tdd::{
 };
 pub use test_runner::{TestFramework, TestResults, TestRunner};
 pub use transitions::{PhaseValidator, TddIterator, TddTransitionValidator, TransitionResult};
+
+// TDD Executor
+pub use executor::{
+    emoji, phase_ascii, phase_emoji, phase_number, PhaseResult, PrintCallback, TddExecutor,
+    TddExecutorCallback, TddExecutorConfig,
+};

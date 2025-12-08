@@ -21,11 +21,11 @@
 
 use std::path::PathBuf;
 
-use crate::utils::emoji;
 use clap::Args;
-use murmur_core::workflow::{TestFramework, TestRunner};
+use murmur_core::workflow::TestFramework;
 use murmur_core::{
-    AgentFactory, AgentType, Config, OutputStreamer, PrintHandler, TddPhase, TddWorkflow,
+    phase_ascii, phase_emoji, Config, PrintCallback, TddExecutor, TddExecutorConfig, TddPhase,
+    TddWorkflow,
 };
 
 /// Arguments for the tdd command (standalone TDD without issue tracking)
@@ -90,19 +90,6 @@ impl TddArgs {
             );
         }
 
-        // Create workflow
-        let mut workflow = if self.skip_spec {
-            TddWorkflow::new_without_spec(&self.behavior, &workdir)
-        } else {
-            TddWorkflow::with_config(&self.behavior, &workdir, config.agent.clone())
-        };
-
-        // Configure workflow
-        if self.skip_refactor {
-            workflow.state_mut().skip_refactor = true;
-        }
-        workflow.state_mut().max_iterations = self.max_iterations;
-
         println!("TDD Workflow (Standalone)");
         println!("=========================");
         println!();
@@ -114,6 +101,12 @@ impl TddArgs {
         println!();
 
         if self.dry_run {
+            // Create workflow for dry run display only
+            let workflow = if self.skip_spec {
+                TddWorkflow::new_without_spec(&self.behavior, &workdir)
+            } else {
+                TddWorkflow::with_config(&self.behavior, &workdir, config.agent.clone())
+            };
             println!("[Dry run] Would execute TDD workflow with the following phases:");
             println!();
             self.show_planned_phases(&workflow, no_emoji);
@@ -125,187 +118,30 @@ impl TddArgs {
         println!("Detected test framework: {}", framework.name());
         println!();
 
-        // Create test runner for validation phases
-        let test_runner = TestRunner::new(workdir.clone()).with_framework(framework);
+        // Create executor configuration
+        let executor_config = TddExecutorConfig::new()
+            .with_skip_spec(self.skip_spec)
+            .with_skip_refactor(self.skip_refactor)
+            .with_max_iterations(self.max_iterations)
+            .with_verbose(verbose)
+            .with_no_emoji(no_emoji)
+            .with_agent_config(config.agent.clone());
 
-        // Create agent factory
-        let factory = AgentFactory::with_config(config.agent.clone());
+        // Create executor
+        let mut executor = TddExecutor::with_config(&self.behavior, &workdir, executor_config)
+            .with_framework(framework);
 
-        // Run the TDD cycle
-        while !workflow.is_complete() && !workflow.should_give_up() {
-            let phase = workflow.phase();
-            let phase_num = phase_number(&phase);
-            let total_phases = if self.skip_spec { 6 } else { 7 };
+        // Create simple print callback (no database tracking for standalone mode)
+        let mut callback = PrintCallback::new(verbose, no_emoji);
 
-            println!(
-                "Phase {}/{}: {} {}",
-                phase_num,
-                total_phases,
-                emoji(no_emoji, phase_emoji(&phase), phase_ascii(&phase)),
-                phase.description()
-            );
-            println!();
+        // Execute the workflow
+        let success = executor
+            .execute(&mut callback)
+            .await
+            .map_err(|e| anyhow::anyhow!("TDD workflow error: {}", e))?;
 
-            match phase {
-                TddPhase::WriteSpec
-                | TddPhase::WriteTests
-                | TddPhase::Implement
-                | TddPhase::Refactor => {
-                    // Agent-driven phases
-                    let prompt = workflow.current_prompt();
-
-                    if verbose {
-                        println!("Prompt: {}", prompt);
-                        println!();
-                    }
-
-                    println!("Starting agent...");
-
-                    // Choose agent type based on phase
-                    let agent_type = match phase {
-                        TddPhase::WriteTests => AgentType::Test,
-                        _ => AgentType::Implement,
-                    };
-                    let typed_agent = factory.create(agent_type);
-
-                    // Spawn and run agent
-                    let mut handle = typed_agent.spawn_with_task(&prompt, &workdir).await?;
-
-                    let stdout = handle
-                        .child_mut()
-                        .stdout
-                        .take()
-                        .ok_or_else(|| anyhow::anyhow!("Failed to capture agent stdout"))?;
-
-                    // Stream output
-                    let mut streamer = OutputStreamer::new(stdout);
-                    let mut handler = PrintHandler::new(verbose);
-                    streamer.stream(&mut handler).await?;
-
-                    let status = handle.wait().await?;
-
-                    if status.success() {
-                        println!();
-                        println!("{} Phase completed", emoji(no_emoji, "✅", "[OK]"));
-                        workflow.advance(true, None);
-                    } else {
-                        println!();
-                        println!(
-                            "{} Agent exited with status: {}",
-                            emoji(no_emoji, "❌", "[FAIL]"),
-                            status
-                        );
-                        // Don't advance, let user decide what to do
-                        return Err(anyhow::anyhow!(
-                            "Agent failed in {} phase",
-                            phase.description()
-                        ));
-                    }
-                }
-                TddPhase::VerifyRed => {
-                    // Run tests and expect them to fail
-                    println!("Running tests (expecting failures)...");
-                    let results = test_runner.run();
-
-                    println!();
-                    println!(
-                        "Test results: {} passed, {} failed, {} skipped",
-                        results.passed, results.failed, results.skipped
-                    );
-
-                    if results.is_red() {
-                        println!();
-                        println!(
-                            "{} Tests failed as expected (red phase)",
-                            emoji(no_emoji, "✅", "[OK]")
-                        );
-                        workflow.advance(true, None);
-                    } else if results.passed > 0 && results.failed == 0 {
-                        println!();
-                        println!(
-                            "{} Tests passed unexpectedly - tests may not be testing new behavior",
-                            emoji(no_emoji, "⚠️", "[WARN]")
-                        );
-                        println!("Going back to WriteTests phase...");
-                        workflow.retry_tests(Some("Tests passed unexpectedly".to_string()));
-                    } else {
-                        println!();
-                        println!(
-                            "{} No tests found or error running tests",
-                            emoji(no_emoji, "❌", "[FAIL]")
-                        );
-                        workflow.retry_tests(Some("No tests found".to_string()));
-                    }
-                }
-                TddPhase::VerifyGreen => {
-                    // Run tests and expect them to pass
-                    let iteration = workflow.state().iterations;
-                    println!(
-                        "Running tests (iteration {}/{})...",
-                        iteration + 1,
-                        self.max_iterations
-                    );
-                    let results = test_runner.run();
-
-                    println!();
-                    println!(
-                        "Test results: {} passed, {} failed, {} skipped",
-                        results.passed, results.failed, results.skipped
-                    );
-
-                    if results.is_green() {
-                        println!();
-                        println!(
-                            "{} All tests pass (green phase)",
-                            emoji(no_emoji, "✅", "[OK]")
-                        );
-                        workflow.advance(true, None);
-                    } else {
-                        println!();
-                        println!(
-                            "{} {} tests still failing",
-                            emoji(no_emoji, "❌", "[FAIL]"),
-                            results.failed
-                        );
-
-                        if workflow.state().iterations + 1 >= self.max_iterations {
-                            println!();
-                            println!(
-                                "{} Maximum iterations reached, giving up",
-                                emoji(no_emoji, "🛑", "[STOP]")
-                            );
-                        } else {
-                            println!("Returning to Implement phase...");
-                            workflow
-                                .retry_implement(Some(format!("{} tests failing", results.failed)));
-                        }
-                    }
-                }
-                TddPhase::Complete => {
-                    // Should not reach here due to while condition
-                    break;
-                }
-            }
-            println!();
-        }
-
-        // Final status
-        if workflow.is_complete() {
-            println!("═══════════════════════════════════════");
-            println!(
-                "{} TDD workflow completed successfully!",
-                emoji(no_emoji, "🎉", "[DONE]")
-            );
-            println!("═══════════════════════════════════════");
-        } else if workflow.should_give_up() {
-            println!("═══════════════════════════════════════");
-            println!(
-                "{} TDD workflow failed after {} iterations",
-                emoji(no_emoji, "💥", "[FAIL]"),
-                workflow.state().iterations
-            );
-            println!("═══════════════════════════════════════");
-            return Err(anyhow::anyhow!("TDD workflow failed after max iterations"));
+        if !success {
+            return Err(anyhow::anyhow!("TDD workflow failed"));
         }
 
         Ok(())
@@ -368,41 +204,5 @@ impl TddArgs {
         println!("---");
         println!("{}", workflow.current_prompt());
         println!("---");
-    }
-}
-
-fn phase_number(phase: &TddPhase) -> u32 {
-    match phase {
-        TddPhase::WriteSpec => 1,
-        TddPhase::WriteTests => 2,
-        TddPhase::VerifyRed => 3,
-        TddPhase::Implement => 4,
-        TddPhase::VerifyGreen => 5,
-        TddPhase::Refactor => 6,
-        TddPhase::Complete => 7,
-    }
-}
-
-fn phase_emoji(phase: &TddPhase) -> &'static str {
-    match phase {
-        TddPhase::WriteSpec => "📝",
-        TddPhase::WriteTests => "🧪",
-        TddPhase::VerifyRed => "🔴",
-        TddPhase::Implement => "🔨",
-        TddPhase::VerifyGreen => "🟢",
-        TddPhase::Refactor => "✨",
-        TddPhase::Complete => "🎉",
-    }
-}
-
-fn phase_ascii(phase: &TddPhase) -> &'static str {
-    match phase {
-        TddPhase::WriteSpec => "[SPEC]",
-        TddPhase::WriteTests => "[TEST]",
-        TddPhase::VerifyRed => "[RED]",
-        TddPhase::Implement => "[IMPL]",
-        TddPhase::VerifyGreen => "[GREEN]",
-        TddPhase::Refactor => "[REFAC]",
-        TddPhase::Complete => "[DONE]",
     }
 }
