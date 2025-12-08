@@ -10,6 +10,7 @@
 //! - Escalation to humans when needed
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::time::Duration;
 
 use crate::agent::AgentType;
@@ -191,7 +192,9 @@ impl SubTask {
     }
 
     /// Check if this task is ready to execute (all dependencies satisfied)
-    pub fn is_ready(&self, completed_tasks: &[String]) -> bool {
+    ///
+    /// Uses `HashSet` for O(1) dependency lookups instead of O(n) with slices.
+    pub fn is_ready(&self, completed_tasks: &HashSet<String>) -> bool {
         self.status == SubTaskStatus::Pending
             && self
                 .depends_on
@@ -300,8 +303,8 @@ impl CoordinatorState {
         self.sub_tasks.push(task);
     }
 
-    /// Get completed task IDs
-    pub fn completed_task_ids(&self) -> Vec<String> {
+    /// Get completed task IDs as a HashSet for efficient O(1) lookups
+    pub fn completed_task_ids(&self) -> HashSet<String> {
         self.sub_tasks
             .iter()
             .filter(|t| t.status == SubTaskStatus::Completed)
@@ -316,32 +319,53 @@ impl CoordinatorState {
     }
 
     /// Mark a sub-task as running
+    ///
+    /// Only transitions from Pending to Running. Returns false if the task
+    /// is not found or is not in Pending status.
     pub fn start_task(&mut self, task_id: &str) -> bool {
         if let Some(task) = self.sub_tasks.iter_mut().find(|t| t.id == task_id) {
-            task.status = SubTaskStatus::Running;
-            true
+            if task.status == SubTaskStatus::Pending {
+                task.status = SubTaskStatus::Running;
+                true
+            } else {
+                false
+            }
         } else {
             false
         }
     }
 
     /// Mark a sub-task as completed
+    ///
+    /// Only transitions from Running to Completed. Returns false if the task
+    /// is not found or is not in Running status.
     pub fn complete_task(&mut self, task_id: &str, output: Option<String>) -> bool {
         if let Some(task) = self.sub_tasks.iter_mut().find(|t| t.id == task_id) {
-            task.status = SubTaskStatus::Completed;
-            task.output = output;
-            true
+            if task.status == SubTaskStatus::Running {
+                task.status = SubTaskStatus::Completed;
+                task.output = output;
+                true
+            } else {
+                false
+            }
         } else {
             false
         }
     }
 
     /// Mark a sub-task as failed
+    ///
+    /// Only transitions from Running to Failed. Returns false if the task
+    /// is not found or is not in Running status.
     pub fn fail_task(&mut self, task_id: &str) -> bool {
         if let Some(task) = self.sub_tasks.iter_mut().find(|t| t.id == task_id) {
-            task.status = SubTaskStatus::Failed;
-            task.retry_count += 1;
-            true
+            if task.status == SubTaskStatus::Running {
+                task.status = SubTaskStatus::Failed;
+                task.retry_count += 1;
+                true
+            } else {
+                false
+            }
         } else {
             false
         }
@@ -495,10 +519,12 @@ mod tests {
             .with_dependencies(vec!["task-1".to_string()]);
 
         // Not ready if dependency not completed
-        assert!(!task.is_ready(&[]));
+        let empty_set: HashSet<String> = HashSet::new();
+        assert!(!task.is_ready(&empty_set));
 
         // Ready when dependency is completed
-        assert!(task.is_ready(&["task-1".to_string()]));
+        let completed_set: HashSet<String> = HashSet::from(["task-1".to_string()]);
+        assert!(task.is_ready(&completed_set));
     }
 
     #[test]
@@ -647,7 +673,8 @@ mod tests {
         state.complete_task("task-1", None);
 
         let completed = state.completed_task_ids();
-        assert_eq!(completed, vec!["task-1".to_string()]);
+        assert!(completed.contains("task-1"));
+        assert_eq!(completed.len(), 1);
     }
 
     #[test]
@@ -660,5 +687,134 @@ mod tests {
 
         state.increment_iteration();
         assert_eq!(state.iteration, 2);
+    }
+
+    #[test]
+    fn test_coordinator_config_serde_roundtrip() {
+        let config = CoordinatorConfig {
+            max_retries: 5,
+            max_iterations: 10,
+            agent_timeout: Duration::from_secs(300),
+            workflow_timeout: Duration::from_secs(1800),
+            auto_escalate: false,
+            require_review: false,
+            use_tdd: false,
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&config).expect("Failed to serialize config");
+
+        // Deserialize back
+        let deserialized: CoordinatorConfig =
+            serde_json::from_str(&json).expect("Failed to deserialize config");
+
+        // Verify roundtrip
+        assert_eq!(config.max_retries, deserialized.max_retries);
+        assert_eq!(config.max_iterations, deserialized.max_iterations);
+        assert_eq!(config.agent_timeout, deserialized.agent_timeout);
+        assert_eq!(config.workflow_timeout, deserialized.workflow_timeout);
+        assert_eq!(config.auto_escalate, deserialized.auto_escalate);
+        assert_eq!(config.require_review, deserialized.require_review);
+        assert_eq!(config.use_tdd, deserialized.use_tdd);
+    }
+
+    #[test]
+    fn test_coordinator_state_serde_roundtrip() {
+        let mut state =
+            CoordinatorState::new("Implement feature X", "owner/repo", "feature-branch");
+        state.phase = CoordinatorPhase::Implementing;
+        state.iteration = 2;
+        state.worktree_path = Some("/tmp/worktree".to_string());
+        state.escalated = false;
+        state.escalation_reason = None;
+
+        // Add sub-tasks with various states
+        let mut task1 = SubTask::new("task-1", "Write tests", AgentType::Test);
+        task1.status = SubTaskStatus::Completed;
+        task1.output = Some("Tests passed".to_string());
+
+        let mut task2 = SubTask::new("task-2", "Implement code", AgentType::Implement);
+        task2.status = SubTaskStatus::Running;
+        task2.depends_on = vec!["task-1".to_string()];
+
+        let task3 = SubTask::new("task-3", "Review code", AgentType::Review);
+        // task3 stays in Pending status with dependency on task-2
+
+        state.add_sub_task(task1);
+        state.add_sub_task(task2);
+        state.add_sub_task(task3);
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&state).expect("Failed to serialize state");
+
+        // Deserialize back
+        let deserialized: CoordinatorState =
+            serde_json::from_str(&json).expect("Failed to deserialize state");
+
+        // Verify roundtrip
+        assert_eq!(state.task, deserialized.task);
+        assert_eq!(state.repo, deserialized.repo);
+        assert_eq!(state.branch, deserialized.branch);
+        assert_eq!(state.phase, deserialized.phase);
+        assert_eq!(state.iteration, deserialized.iteration);
+        assert_eq!(state.worktree_path, deserialized.worktree_path);
+        assert_eq!(state.escalated, deserialized.escalated);
+        assert_eq!(state.escalation_reason, deserialized.escalation_reason);
+
+        // Verify sub-tasks
+        assert_eq!(state.sub_tasks.len(), deserialized.sub_tasks.len());
+        for (original, roundtripped) in state.sub_tasks.iter().zip(deserialized.sub_tasks.iter()) {
+            assert_eq!(original.id, roundtripped.id);
+            assert_eq!(original.description, roundtripped.description);
+            assert_eq!(original.agent_type, roundtripped.agent_type);
+            assert_eq!(original.status, roundtripped.status);
+            assert_eq!(original.output, roundtripped.output);
+            assert_eq!(original.depends_on, roundtripped.depends_on);
+            assert_eq!(original.retry_count, roundtripped.retry_count);
+        }
+    }
+
+    #[test]
+    fn test_coordinator_phase_serde_roundtrip() {
+        // Test all phase variants
+        let phases = vec![
+            CoordinatorPhase::Analyzing,
+            CoordinatorPhase::Planning,
+            CoordinatorPhase::WritingTests,
+            CoordinatorPhase::VerifyingRed,
+            CoordinatorPhase::Implementing,
+            CoordinatorPhase::VerifyingGreen,
+            CoordinatorPhase::Reviewing,
+            CoordinatorPhase::AddressingFeedback,
+            CoordinatorPhase::Finalizing,
+            CoordinatorPhase::Completed,
+            CoordinatorPhase::Escalated,
+        ];
+
+        for phase in phases {
+            let json = serde_json::to_string(&phase).expect("Failed to serialize phase");
+            let deserialized: CoordinatorPhase =
+                serde_json::from_str(&json).expect("Failed to deserialize phase");
+            assert_eq!(phase, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_sub_task_status_serde_roundtrip() {
+        // Test all status variants
+        let statuses = vec![
+            SubTaskStatus::Pending,
+            SubTaskStatus::Running,
+            SubTaskStatus::Completed,
+            SubTaskStatus::Failed,
+            SubTaskStatus::Skipped,
+        ];
+
+        for status in statuses {
+            let json = serde_json::to_string(&status).expect("Failed to serialize status");
+            let deserialized: SubTaskStatus =
+                serde_json::from_str(&json).expect("Failed to deserialize status");
+            assert_eq!(status, deserialized);
+        }
     }
 }
