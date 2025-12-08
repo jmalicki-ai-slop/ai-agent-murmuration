@@ -2,10 +2,11 @@
 
 use crate::utils::emoji;
 use clap::Args;
-use murmur_core::workflow::{TestFramework, TestRunner};
+use murmur_core::workflow::TestFramework;
 use murmur_core::{
-    AgentFactory, AgentSpawner, AgentType, BranchingOptions, Config, GitRepo, OutputStreamer,
-    Secrets, TddPhase, TddWorkflow, WorktreeOptions,
+    phase_ascii, phase_emoji, AgentSpawner, AgentType, BranchingOptions, Config, GitRepo,
+    OutputStreamer, PhaseResult, Secrets, TddExecutor, TddExecutorCallback, TddExecutorConfig,
+    TddPhase, WorktreeOptions,
 };
 use murmur_db::{
     models::{AgentRun, ConversationLog, WorktreeRecord},
@@ -604,12 +605,12 @@ impl WorkArgs {
         Ok(status.success())
     }
 
-    /// Run the TDD workflow
+    /// Run the TDD workflow using the shared TddExecutor
     #[allow(clippy::too_many_arguments)]
     async fn run_tdd_workflow(
         &self,
         config: &Config,
-        db: &Database,
+        _db: &Database,
         workdir: &std::path::Path,
         issue: &murmur_github::Issue,
         verbose: bool,
@@ -642,19 +643,6 @@ impl WorkArgs {
         }
         println!();
 
-        // Create workflow
-        let mut workflow = if self.skip_spec {
-            TddWorkflow::new_without_spec(&behavior, workdir)
-        } else {
-            TddWorkflow::with_config(&behavior, workdir, config.agent.clone())
-        };
-
-        // Configure workflow
-        if self.skip_refactor {
-            workflow.state_mut().skip_refactor = true;
-        }
-        workflow.state_mut().max_iterations = self.max_iterations;
-
         // Detect test framework
         let framework = match TestFramework::detect(workdir) {
             Some(f) => {
@@ -671,237 +659,39 @@ impl WorkArgs {
         };
         println!();
 
-        // Create test runner for validation phases
-        let test_runner = TestRunner::new(workdir.to_path_buf()).with_framework(framework);
+        // Create executor configuration
+        let executor_config = TddExecutorConfig::new()
+            .with_skip_spec(self.skip_spec)
+            .with_skip_refactor(self.skip_refactor)
+            .with_max_iterations(self.max_iterations)
+            .with_verbose(verbose)
+            .with_no_emoji(no_emoji)
+            .with_agent_config(config.agent.clone());
 
-        // Create agent factory
-        let factory = AgentFactory::with_config(config.agent.clone());
+        // Create executor
+        let mut executor =
+            TddExecutor::with_config(&behavior, workdir, executor_config).with_framework(framework);
 
-        // Run the TDD cycle
-        while !workflow.is_complete() && !workflow.should_give_up() {
-            let phase = workflow.phase();
-            let phase_num = phase_number(&phase, self.skip_spec);
-            let total_phases = if self.skip_spec { 6 } else { 7 };
+        // Create callback for database logging
+        // Open a new database connection for the callback since Database doesn't implement Clone
+        let callback_db = Database::open()
+            .map_err(|e| anyhow::anyhow!("Failed to open database for TDD callback: {}", e))?;
+        let mut callback = DatabaseTddCallback::new(
+            callback_db,
+            self.issue as i64,
+            workdir.to_string_lossy().to_string(),
+            config.agent.clone(),
+            verbose,
+            no_emoji,
+        );
 
-            println!(
-                "Phase {}/{}: {} {}",
-                phase_num,
-                total_phases,
-                emoji(no_emoji, phase_emoji(&phase), phase_ascii(&phase)),
-                phase.description()
-            );
-            println!();
+        // Execute the workflow
+        let result = executor
+            .execute(&mut callback)
+            .await
+            .map_err(|e| anyhow::anyhow!("TDD workflow error: {}", e))?;
 
-            match phase {
-                TddPhase::WriteSpec
-                | TddPhase::WriteTests
-                | TddPhase::Implement
-                | TddPhase::Refactor => {
-                    // Agent-driven phases
-                    let prompt = workflow.current_prompt();
-
-                    if verbose {
-                        println!("Prompt: {}", prompt);
-                        println!();
-                    }
-
-                    println!("Starting agent...");
-
-                    // Create agent run record for this phase
-                    let phase_name = format!(
-                        "tdd_{}",
-                        phase.description().to_lowercase().replace(' ', "_")
-                    );
-                    let config_json =
-                        serde_json::to_string(&config.agent).unwrap_or_else(|_| "{}".to_string());
-                    let mut agent_run = AgentRun::new(
-                        &phase_name,
-                        &prompt,
-                        workdir.to_str().unwrap_or(""),
-                        config_json,
-                    )
-                    .with_issue_number(self.issue as i64);
-
-                    let agent_repo = AgentRunRepository::new(db);
-                    let run_id = agent_repo
-                        .insert(&agent_run)
-                        .map_err(|e| anyhow::anyhow!("Failed to create agent run record: {}", e))?;
-                    agent_run.id = Some(run_id);
-
-                    if verbose {
-                        println!("Agent run ID: {}", run_id);
-                    }
-
-                    // Choose agent type based on phase
-                    let agent_type = match phase {
-                        TddPhase::WriteTests => AgentType::Test,
-                        _ => AgentType::Implement,
-                    };
-                    let mut typed_agent = factory.create(agent_type);
-
-                    // Pass GitHub token to agent via environment variable
-                    if let Ok(secrets) = Secrets::load() {
-                        if let Some(token) = secrets.github_token() {
-                            typed_agent = typed_agent.with_env("GITHUB_TOKEN", token);
-                        }
-                    }
-
-                    // Spawn and run agent
-                    let mut handle = typed_agent.spawn_with_task(&prompt, workdir).await?;
-
-                    // Update PID in database
-                    if let Some(pid) = handle.pid() {
-                        agent_run.pid = Some(pid as i32);
-                        if let Err(e) = agent_repo.update(&agent_run) {
-                            eprintln!("Warning: Failed to update agent run with PID: {}", e);
-                        }
-                    }
-
-                    let stdout = handle
-                        .child_mut()
-                        .stdout
-                        .take()
-                        .ok_or_else(|| anyhow::anyhow!("Failed to capture agent stdout"))?;
-
-                    // Stream output with database logging
-                    let mut streamer = OutputStreamer::new(stdout);
-                    let handler_db = Database::open().map_err(|e| {
-                        anyhow::anyhow!("Failed to open database for handler: {}", e)
-                    })?;
-                    let mut handler = DatabaseLoggingHandler::new(handler_db, run_id, verbose);
-                    if let Err(e) = streamer.stream(&mut handler).await {
-                        eprintln!("Stream error: {}", e);
-                    }
-
-                    let status = handle.wait().await?;
-
-                    // Update agent run with completion status
-                    agent_run.complete(status.code().unwrap_or(-1));
-                    if let Err(e) = agent_repo.update(&agent_run) {
-                        eprintln!("Warning: Failed to update agent run record: {}", e);
-                    }
-
-                    if status.success() {
-                        println!();
-                        println!("{} Phase completed", emoji(no_emoji, "✅", "[OK]"));
-                        workflow.advance(true, None);
-                    } else {
-                        println!();
-                        println!(
-                            "{} Agent exited with status: {}",
-                            emoji(no_emoji, "❌", "[FAIL]"),
-                            status
-                        );
-                        // Don't advance, return failure
-                        return Ok(false);
-                    }
-                }
-                TddPhase::VerifyRed => {
-                    // Run tests and expect them to fail
-                    println!("Running tests (expecting failures)...");
-                    let results = test_runner.run();
-
-                    println!();
-                    println!(
-                        "Test results: {} passed, {} failed, {} skipped",
-                        results.passed, results.failed, results.skipped
-                    );
-
-                    if results.is_red() {
-                        println!();
-                        println!(
-                            "{} Tests failed as expected (red phase)",
-                            emoji(no_emoji, "✅", "[OK]")
-                        );
-                        workflow.advance(true, None);
-                    } else if results.passed > 0 && results.failed == 0 {
-                        println!();
-                        println!(
-                            "{} Tests passed unexpectedly - tests may not be testing new behavior",
-                            emoji(no_emoji, "⚠️", "[WARN]")
-                        );
-                        println!("Going back to WriteTests phase...");
-                        workflow.retry_tests(Some("Tests passed unexpectedly".to_string()));
-                    } else {
-                        println!();
-                        println!(
-                            "{} No tests found or error running tests",
-                            emoji(no_emoji, "❌", "[FAIL]")
-                        );
-                        workflow.retry_tests(Some("No tests found".to_string()));
-                    }
-                }
-                TddPhase::VerifyGreen => {
-                    // Run tests and expect them to pass
-                    let iteration = workflow.state().iterations;
-                    println!(
-                        "Running tests (iteration {}/{})...",
-                        iteration + 1,
-                        self.max_iterations
-                    );
-                    let results = test_runner.run();
-
-                    println!();
-                    println!(
-                        "Test results: {} passed, {} failed, {} skipped",
-                        results.passed, results.failed, results.skipped
-                    );
-
-                    if results.is_green() {
-                        println!();
-                        println!(
-                            "{} All tests pass (green phase)",
-                            emoji(no_emoji, "✅", "[OK]")
-                        );
-                        workflow.advance(true, None);
-                    } else {
-                        println!();
-                        println!(
-                            "{} {} tests still failing",
-                            emoji(no_emoji, "❌", "[FAIL]"),
-                            results.failed
-                        );
-
-                        if workflow.state().iterations + 1 >= self.max_iterations {
-                            println!();
-                            println!(
-                                "{} Maximum iterations reached, giving up",
-                                emoji(no_emoji, "🛑", "[STOP]")
-                            );
-                        } else {
-                            println!("Returning to Implement phase...");
-                            workflow
-                                .retry_implement(Some(format!("{} tests failing", results.failed)));
-                        }
-                    }
-                }
-                TddPhase::Complete => {
-                    // Should not reach here due to while condition
-                    break;
-                }
-            }
-            println!();
-        }
-
-        // Final status
-        if workflow.is_complete() {
-            println!("═══════════════════════════════════════");
-            println!(
-                "{} TDD workflow completed successfully!",
-                emoji(no_emoji, "🎉", "[DONE]")
-            );
-            println!("═══════════════════════════════════════");
-            Ok(true)
-        } else {
-            println!("═══════════════════════════════════════");
-            println!(
-                "{} TDD workflow failed after {} iterations",
-                emoji(no_emoji, "💥", "[FAIL]"),
-                workflow.state().iterations
-            );
-            println!("═══════════════════════════════════════");
-            Ok(false)
-        }
+        Ok(result)
     }
 
     /// Handle post-completion tasks: commit, push, and PR creation
@@ -1240,49 +1030,151 @@ fn build_prompt_from_issue(issue: &murmur_github::Issue) -> String {
     prompt
 }
 
-/// Get the phase number for display
-///
-/// When `skip_spec` is true, phase numbers are adjusted so WriteTests becomes phase 1.
-fn phase_number(phase: &TddPhase, skip_spec: bool) -> u32 {
-    let base = match phase {
-        TddPhase::WriteSpec => 1,
-        TddPhase::WriteTests => 2,
-        TddPhase::VerifyRed => 3,
-        TddPhase::Implement => 4,
-        TddPhase::VerifyGreen => 5,
-        TddPhase::Refactor => 6,
-        TddPhase::Complete => 7,
-    };
-    if skip_spec && base > 1 {
-        base - 1
-    } else {
-        base
+/// TDD callback implementation with database logging support
+struct DatabaseTddCallback {
+    db: Database,
+    issue_number: i64,
+    workdir: String,
+    agent_config: murmur_core::AgentConfig,
+    verbose: bool,
+    no_emoji: bool,
+    current_run_id: Option<i64>,
+    current_agent_run: Option<AgentRun>,
+}
+
+impl DatabaseTddCallback {
+    fn new(
+        db: Database,
+        issue_number: i64,
+        workdir: String,
+        agent_config: murmur_core::AgentConfig,
+        verbose: bool,
+        no_emoji: bool,
+    ) -> Self {
+        Self {
+            db,
+            issue_number,
+            workdir,
+            agent_config,
+            verbose,
+            no_emoji,
+            current_run_id: None,
+            current_agent_run: None,
+        }
     }
 }
 
-/// Get the emoji for a TDD phase
-fn phase_emoji(phase: &TddPhase) -> &'static str {
-    match phase {
-        TddPhase::WriteSpec => "📝",
-        TddPhase::WriteTests => "🧪",
-        TddPhase::VerifyRed => "🔴",
-        TddPhase::Implement => "🔨",
-        TddPhase::VerifyGreen => "🟢",
-        TddPhase::Refactor => "✨",
-        TddPhase::Complete => "🎉",
+impl TddExecutorCallback for DatabaseTddCallback {
+    fn on_phase_start(&mut self, phase: &TddPhase, phase_num: u32, total_phases: u32) {
+        println!(
+            "Phase {}/{}: {} {}",
+            phase_num,
+            total_phases,
+            emoji(self.no_emoji, phase_emoji(phase), phase_ascii(phase)),
+            phase.description()
+        );
+        println!();
     }
-}
 
-/// Get the ASCII alternative for a TDD phase
-fn phase_ascii(phase: &TddPhase) -> &'static str {
-    match phase {
-        TddPhase::WriteSpec => "[SPEC]",
-        TddPhase::WriteTests => "[TEST]",
-        TddPhase::VerifyRed => "[RED]",
-        TddPhase::Implement => "[IMPL]",
-        TddPhase::VerifyGreen => "[GREEN]",
-        TddPhase::Refactor => "[REFAC]",
-        TddPhase::Complete => "[DONE]",
+    fn on_phase_complete(&mut self, result: &PhaseResult) {
+        if result.success {
+            println!("{} Phase completed", emoji(self.no_emoji, "✅", "[OK]"));
+        } else {
+            let msg = result.message.as_deref().unwrap_or("Phase failed");
+            println!("{} {}", emoji(self.no_emoji, "❌", "[FAIL]"), msg);
+        }
+    }
+
+    fn on_agent_start(&mut self, phase: &TddPhase, prompt: &str) -> Option<i64> {
+        if self.verbose {
+            println!("Prompt: {}", prompt);
+            println!();
+        }
+        println!("Starting agent...");
+
+        // Create agent run record for this phase
+        let phase_name = format!(
+            "tdd_{}",
+            phase.description().to_lowercase().replace(' ', "_")
+        );
+        let config_json =
+            serde_json::to_string(&self.agent_config).unwrap_or_else(|_| "{}".to_string());
+        let agent_run = AgentRun::new(&phase_name, prompt, &self.workdir, config_json)
+            .with_issue_number(self.issue_number);
+
+        let agent_repo = AgentRunRepository::new(&self.db);
+        match agent_repo.insert(&agent_run) {
+            Ok(run_id) => {
+                if self.verbose {
+                    println!("Agent run ID: {}", run_id);
+                }
+                self.current_run_id = Some(run_id);
+                let mut run = agent_run;
+                run.id = Some(run_id);
+                self.current_agent_run = Some(run);
+                Some(run_id)
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to create agent run record: {}", e);
+                None
+            }
+        }
+    }
+
+    fn on_agent_complete(&mut self, _run_id: Option<i64>, exit_code: i32) {
+        // Update agent run with completion status
+        if let Some(ref mut agent_run) = self.current_agent_run {
+            agent_run.complete(exit_code);
+            let agent_repo = AgentRunRepository::new(&self.db);
+            if let Err(e) = agent_repo.update(agent_run) {
+                eprintln!("Warning: Failed to update agent run record: {}", e);
+            }
+        }
+        self.current_run_id = None;
+        self.current_agent_run = None;
+    }
+
+    fn on_test_results(&mut self, passed: u32, failed: u32, skipped: u32) {
+        println!();
+        println!(
+            "Test results: {} passed, {} failed, {} skipped",
+            passed, failed, skipped
+        );
+    }
+
+    fn on_workflow_complete(&mut self, success: bool, iterations: u32) {
+        println!("═══════════════════════════════════════");
+        if success {
+            println!(
+                "{} TDD workflow completed successfully!",
+                emoji(self.no_emoji, "🎉", "[DONE]")
+            );
+        } else {
+            println!(
+                "{} TDD workflow failed after {} iterations",
+                emoji(self.no_emoji, "💥", "[FAIL]"),
+                iterations
+            );
+        }
+        println!("═══════════════════════════════════════");
+    }
+
+    fn stream_handler(&mut self) -> Box<dyn murmur_core::StreamHandler + Send> {
+        if let Some(run_id) = self.current_run_id {
+            match Database::open() {
+                Ok(handler_db) => Box::new(DatabaseLoggingHandler::new(
+                    handler_db,
+                    run_id,
+                    self.verbose,
+                )),
+                Err(e) => {
+                    eprintln!("Warning: Failed to open database for handler: {}", e);
+                    Box::new(murmur_core::PrintHandler::new(self.verbose))
+                }
+            }
+        } else {
+            Box::new(murmur_core::PrintHandler::new(self.verbose))
+        }
     }
 }
 

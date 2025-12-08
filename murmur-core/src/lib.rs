@@ -29,7 +29,8 @@ pub use plan::{parse_plan, Phase, Plan, PlannedPR};
 pub use review::{ReviewContext, ReviewRequest, ReviewRequestBuilder, ReviewType};
 pub use secrets::{GitHubSecrets, Secrets};
 pub use workflow::{
-    build_resume_prompt, find_incomplete_runs, find_latest_incomplete_run,
-    reconstruct_conversation, ConversationMessage, PhaseValidation, ResumableRun, StateMachine,
-    TddPhase, TddState, TddTransition, TddWorkflow, Workflow,
+    build_resume_prompt, emoji, find_incomplete_runs, find_latest_incomplete_run, phase_ascii,
+    phase_emoji, phase_number, reconstruct_conversation, ConversationMessage, PhaseResult,
+    PhaseValidation, PrintCallback, ResumableRun, StateMachine, TddExecutor, TddExecutorCallback,
+    TddExecutorConfig, TddPhase, TddState, TddTransition, TddWorkflow, Workflow,
 };
